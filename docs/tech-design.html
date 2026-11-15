@@ -1,0 +1,682 @@
+<title>Multi-Zones 技術設計</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 單欄文件頁（類 Word 的紙張），灰底上置中一張白紙；表格與程式碼各自橫向捲動 */
+:root {
+  --desk: #eef0f3;
+  --paper: #ffffff;
+  --ink: #1f2329;
+  --muted: #5b6470;
+  --rule: #d5d9df;
+  --head-bg: #f3f5f8;
+  --accent: #1f4e9c;
+  --code-bg: #f5f6f8;
+  --ok: #1d7a46;
+  --warn: #a35d00;
+  --bad: #b3261e;
+  --shadow: 0 1px 3px rgba(20, 30, 50, .12);
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #15181c; --paper: #1e2227; --ink: #e4e7eb; --muted: #a0a8b3; --rule: #3a4048;
+    --head-bg: #262b31; --accent: #8fb3f0; --code-bg: #262b31; --ok: #6fcf97; --warn: #f2b45a; --bad: #f28b82;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .5); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --desk: #15181c; --paper: #1e2227; --ink: #e4e7eb; --muted: #a0a8b3; --rule: #3a4048;
+  --head-bg: #262b31; --accent: #8fb3f0; --code-bg: #262b31; --ok: #6fcf97; --warn: #f2b45a; --bad: #f28b82;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .5); color-scheme: dark;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.75;
+  padding-block: 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  padding: 56px clamp(20px, 6vw, 72px) 72px;
+}
+h1, h2, h3 { line-height: 1.35; text-wrap: balance; color: var(--ink); }
+h1 { font-size: 28px; font-weight: 700; margin: 0 0 4px; }
+h2 {
+  font-size: 20px; font-weight: 700; margin: 44px 0 12px;
+  padding-bottom: 6px; border-bottom: 2px solid var(--accent);
+}
+h3 { font-size: 16px; font-weight: 700; margin: 28px 0 8px; }
+p, li { max-width: 68ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 1.4em; }
+li + li { margin-top: 4px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+strong { font-weight: 700; }
+.subtitle { color: var(--muted); margin: 0 0 24px; }
+
+code {
+  font-family: var(--font-mono); font-size: .86em;
+  background: var(--code-bg); padding: .1em .35em; border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+pre.code {
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--rule);
+  padding: 12px 14px; overflow-x: auto; margin: 0 0 16px;
+}
+pre.code code { background: none; padding: 0; font-size: inherit; }
+
+.table-wrap { overflow-x: auto; margin: 0 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--rule); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--head-bg); font-weight: 700; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+caption { caption-side: top; text-align: left; color: var(--muted); font-size: 13px; padding-bottom: 6px; }
+
+.meta { width: auto; min-width: 0; font-size: 14px; margin-bottom: 28px; }
+.meta th { width: 7em; }
+
+.toc { border: 1px solid var(--rule); padding: 14px 20px; margin: 0 0 8px; }
+.toc p { margin: 0 0 6px; font-weight: 700; }
+.toc ol { margin: 0; columns: 2 16em; column-gap: 32px; }
+.toc li { break-inside: avoid; }
+
+.note {
+  border-left: 3px solid var(--accent); background: var(--head-bg);
+  padding: 10px 14px; margin: 0 0 16px;
+}
+.note p:last-child { margin-bottom: 0; }
+
+.tag { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+
+.figure { border: 1px solid var(--rule); padding: 12px; margin: 0 0 6px; overflow-x: auto; background: var(--paper); }
+.figure pre.mermaid { margin: 0; background: none; text-align: center; }
+.figcap { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+
+.footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+
+/* 錨點 */
+h2[id], h3[id] { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 16px); }
+.anchor {
+  margin-left: 8px; font-weight: 400; color: var(--muted); text-decoration: none;
+  opacity: 0; transition: opacity .15s;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus-visible { opacity: 1; }
+@media (hover: none) { .anchor { opacity: .55; } }
+:target { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: var(--head-bg); } to { background: transparent; } }
+
+/* 左側導覽窗格（寬螢幕） */
+.layout { display: block; }
+.sidenav { display: none; }
+@media (min-width: 1180px) {
+  .layout {
+    display: grid; grid-template-columns: 250px minmax(0, 860px);
+    gap: 28px; justify-content: center; align-items: start;
+  }
+  .page { margin: 0; }
+  .sidenav {
+    display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px);
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--paper); box-shadow: var(--shadow);
+    padding: 16px 12px; font-size: 13px; line-height: 1.5;
+  }
+  .toc { display: none; }
+}
+.sidenav p { margin: 0 0 8px 8px; font-weight: 700; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+.sidenav ul { list-style: none; margin: 0; padding: 0; }
+.sidenav li { margin: 0; max-width: none; }
+.sidenav a {
+  display: block; padding: 4px 8px; color: var(--ink); text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.sidenav a.sub { padding-left: 22px; color: var(--muted); }
+.sidenav a:hover { background: var(--head-bg); }
+.sidenav a.current { border-left-color: var(--accent); color: var(--accent); font-weight: 700; background: var(--head-bg); }
+.toc ol ol { columns: 1; margin-top: 2px; font-size: 13px; }
+
+.to-top {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--paper); color: var(--accent); border: 1px solid var(--rule);
+  box-shadow: var(--shadow); padding: 6px 12px; font-size: 13px; text-decoration: none;
+}
+.to-top:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { :target { animation: none; } }
+html { scroll-behavior: smooth; }
+
+@media (max-width: 560px) {
+  body { padding-block: 0; }
+  .page { box-shadow: none; padding: 28px 0 40px; background: var(--paper); }
+  body { background: var(--paper); }
+  h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+/* 問題卡：症狀／原因／做法 */
+dl.issue {
+  display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 6px 14px;
+  margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--rule); background: var(--paper);
+}
+dl.issue dt { font-weight: 700; color: var(--muted); font-size: 13px; padding-top: 2px; }
+dl.issue dd { margin: 0; min-width: 0; }
+dl.issue dd ul { margin: 0; }
+@media (max-width: 560px) {
+  dl.issue { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  dl.issue dd + dt { margin-top: 8px; }
+}
+</style>
+
+<div class="layout">
+<nav class="sidenav" aria-label="導覽窗格">
+  <p>導覽</p>
+  <ul id="sidenav-list"></ul>
+</nav>
+<div class="page" id="top">
+
+<h1>Multi-Zones 技術設計</h1>
+<p class="subtitle">把網站拆成多個獨立部署的 Next.js 應用：架構、部署、選單管理，以及實作中遇到的問題與取捨</p>
+
+<table class="meta">
+  <tr><th>文件狀態</th><td>技術審查用（Draft）</td></tr>
+  <tr><th>版本</th><td>2.0</td></tr>
+  <tr><th>日期</th><td>2026-11-16</td></tr>
+  <tr><th>依據</th><td>本機 demo（三個 zone + Vault）在 dev、production、Docker Compose 的實測結果</td></tr>
+  <tr><th>實作</th><td><code>~/Desktop/projects/multi-zone</code>（細部規格與逐項驗收紀錄見 <code>PLAN.md</code>）</td></tr>
+</table>
+
+<nav class="toc" aria-label="目錄">
+  <p>目錄</p>
+  <ol>
+    <li><a href="#summary">摘要</a></li>
+    <li><a href="#why">為什麼選 Multi-Zones</a></li>
+    <li><a href="#architecture">架構與路由</a></li>
+    <li><a href="#deploy">部署</a></li>
+    <li><a href="#menu">選單管理</a></li>
+    <li><a href="#pitfalls">Multi-Zones 會遇到的問題</a></li>
+    <li><a href="#decisions">決策總表</a></li>
+    <li><a href="#risks">風險與待審議</a></li>
+    <li><a href="#evidence">附錄：驗證結果摘要</a></li>
+  </ol>
+</nav>
+
+<h2 id="summary">1. 摘要</h2>
+<p>網站由多個各自建置、各自部署的 Next.js 應用（zone）組成，使用者只看到單一網域。入口 zone A 依路徑前綴把請求轉給負責的 zone。同一個 zone 內切頁是 client-side navigation，跨 zone 一律整頁載入。</p>
+<p>demo 用三個刻意不同的 zone 驗證：A 是 Next 15 App Router，B 是 Next 16 App Router，C 是 Next 15 Pages Router + React 18。三者可以共存，但必須遵守幾條規則（§6），其中最重要的一條是：<strong>不同 zone 要當成彼此不相容的應用看待</strong>，任何進入另一個 zone 的導頁都必須是整頁載入。</p>
+<p>三個關鍵決策：</p>
+<ol>
+  <li><strong>分流</strong>：demo 由 A 的 rewrites 分流。正式環境是否改由 Ingress 分流，列為待審議（§3.1、§8）。</li>
+  <li><strong>部署</strong>：每個 zone 獨立部署，改哪個 zone 就只部署哪個（§4.2）。</li>
+  <li><strong>選單</strong>：由 A 擁有，B、C 在執行期向 A 取得並快取，另有兩層備援。<strong>改選單只需要重新部署 A</strong>，B、C 約 60 秒內跟上（實測 57 秒）（§5）。</li>
+</ol>
+<p>主要代價：A 是單點；B、C 為了顯示選單改成每次請求 render；跨 zone 的切頁體驗是整頁載入。</p>
+
+<h2 id="why">2. 為什麼選 Multi-Zones</h2>
+<div class="table-wrap">
+<table>
+  <caption>表 1　前端拆分方式比較</caption>
+  <thead><tr><th>方式</th><th>獨立部署</th><th>各自選 Next／React 版本</th><th>使用者體驗</th><th>主要成本</th></tr></thead>
+  <tbody>
+    <tr><td>單一 Next app（monorepo 內分資料夾）</td><td class="bad">否，任何改動都部署整站</td><td class="bad">否</td><td>全站 soft nav</td><td>build 時間、發版互相阻擋、升級要全站一起</td></tr>
+    <tr><td><strong>Multi-Zones</strong> <span class="tag ok">採用</span></td><td class="ok">是</td><td class="ok">是（已驗證 15／16、App／Pages、React 18／19 混用）</td><td>zone 內 soft nav，跨 zone 整頁載入</td><td>跨 zone 規則（§6）、共用 UI 要另外維護一致</td></tr>
+    <tr><td>Module Federation（執行期載入別的團隊的元件）</td><td class="ok">是</td><td class="bad">實務上要對齊，React 必須共用同一份</td><td>全站 soft nav</td><td>Next 官方未支援 App Router；版本耦合，出錯時難以追查</td></tr>
+    <tr><td>iframe 或伺服器端拼接 HTML</td><td class="ok">是</td><td class="ok">是</td><td>差：高度、路由、SEO、樣式都要另外處理</td><td>整合成本高</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="note">
+  <p><strong>Module Federation 是什麼？</strong>網頁在使用者打開時，才從其他團隊的伺服器下載一段程式（例如購物車區塊），直接放進同一個畫面裡。好處是不同團隊做的東西可以出現在同一頁，切換畫面時也不必整頁重新載入。</p>
+  <p>代價是這些程式在瀏覽器裡要共用同一套底層程式庫（例如 React），各團隊的版本必須保持一致。一個團隊升級，就可能弄壞別的團隊的畫面，而且這類問題要等使用者打開頁面才會出現，比較難事先發現。Next.js 官方目前也不支援在 App Router 上這樣使用。</p>
+  <p>打個比方：Multi-Zones 像同一條街上的不同店面，各自裝潢、各自營業，換一家要走出門再進門（整頁載入）。Module Federation 像同一間百貨公司裡的不同專櫃，逛起來沒有隔閡，但水電管線（底層程式庫）大家共用，一處施工就可能影響其他專櫃。</p>
+</div>
+<p><strong>適合 Multi-Zones 的條件</strong>：網站可以依網址前綴切成幾個區域，每個區域由不同團隊負責或有不同的發版節奏，而且同一個頁面不需要混用不同團隊的元件。跨區域的切換頻率不高，使用者可以接受這時整頁載入。</p>
+<p><strong>不適合的情況</strong>：同一頁要拼不同團隊的區塊，或是使用者會頻繁在區域之間來回切換。</p>
+
+<h2 id="architecture">3. 架構與路由</h2>
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  U[瀏覽器] -->|單一網域| A
+  subgraph Entry[入口]
+    A["A · main<br/>Next 15 · App Router<br/>選單擁有者"]
+  end
+  A -->|"/shop/*、/shop-static/*"| B["B · shop<br/>Next 16 · App Router"]
+  A -->|"/blog/*、/blog-static/*"| C["C · blog<br/>Next 15 · Pages Router"]
+  B -.->|"GET /api/menu"| A
+  C -.->|"GET /api/menu"| A
+</pre>
+</div>
+<p class="figcap">圖 1　請求路由（實線）與 zone 之間的呼叫（虛線）</p>
+
+<div class="table-wrap">
+<table>
+  <caption>表 2　demo 的 zone 組成</caption>
+  <thead><tr><th>Zone</th><th>負責路徑</th><th>Next</th><th>Router</th><th>React</th><th><code>assetPrefix</code></th></tr></thead>
+  <tbody>
+    <tr><td>A · main（入口）</td><td>沒被其他 zone 接走的所有路徑</td><td>15.5.28</td><td>App</td><td>19</td><td>不設</td></tr>
+    <tr><td>B · shop</td><td><code>/shop</code>、<code>/shop/*</code></td><td>16.4.3</td><td>App</td><td>19</td><td><code>/shop-static</code></td></tr>
+    <tr><td>C · blog</td><td><code>/blog</code>、<code>/blog/*</code></td><td>15.5.28</td><td>Pages</td><td>18</td><td><code>/blog-static</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="routing-entry">3.1 分流放在哪裡</h3>
+<div class="table-wrap">
+<table>
+  <caption>表 3　分流位置比較</caption>
+  <thead><tr><th>做法</th><th>優點</th><th>缺點</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A 的 <code>next.config</code> rewrites</strong> <span class="tag ok">demo 採用</span></td><td>官方建議的做法；規則和程式碼放在一起，本機開發與部署行為一致</td><td>所有流量多經過 A 一跳；A 停止時全站停止；zone 位址在 A <strong>build 時</strong>就寫死</td></tr>
+    <tr><td>A 的 middleware／proxy</td><td>可以在執行期決定轉到哪裡</td><td>每個請求都要多跑一段程式，延遲較高；Next 15 叫 middleware、Next 16 改名 proxy，寫法不同</td></tr>
+    <tr><td>外部 gateway（K8s Ingress／Nginx）</td><td>B、C 不依賴 A 存活；少一跳；換 zone 位址不必重新 build A</td><td>路由規則離開程式碼庫；§6.3 的兩條特殊規則要搬過去，而且需要條件比對能力；本機開發要另外模擬</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="routing-prefix">3.2 zone 用 <code>assetPrefix</code>，不用 <code>basePath</code></h3>
+<p>依官方文件，zone 只設 <code>assetPrefix</code>（例如 <code>/shop-static</code>），讓 B 的 JS、CSS 網址和 A 不衝突；頁面路徑直接寫在 app 的路由裡（<code>app/shop/…</code>）。Next 15 起不需要再額外寫 <code>/_next</code> 的轉換規則。<code>basePath</code> 會讓 zone 所有連結自動加前綴，A 轉發時還要處理前綴，比較複雜，demo 沒有採用。</p>
+
+<h3 id="routing-sample">3.3 設定範例</h3>
+<p>Multi-Zones 需要三件事同時成立：入口依路徑分流、每個 zone 的資源路徑分開、跨 zone 的連結整頁載入。以下以 shop zone 為例，blog 的寫法相同。</p>
+<p><strong>① 子 zone（B）：只多一行 <code>assetPrefix</code></strong>，讓 B 的 JS、CSS 網址變成 <code>/shop-static/_next/…</code>，不會和 A 的 <code>/_next/…</code> 衝突。</p>
+<pre class="code"><code>// b/next.config.ts
+const nextConfig = {
+  assetPrefix: '/shop-static',
+};
+export default nextConfig;</code></pre>
+<p><strong>② 入口 zone（A）：用 rewrites 把路徑轉給 B。</strong>B 的位址在 build 時傳入（§6.5）。</p>
+<pre class="code"><code>// a/next.config.ts
+const SHOP_ZONE_URL = process.env.SHOP_ZONE_URL; // 例如 http://shop.internal:3000
+
+const nextConfig = {
+  async rewrites() {
+    return {
+      beforeFiles: [
+        // 官方文件沒寫：B 的圖片最佳化請求不會帶前綴，依圖片路徑轉給 B（§6.3）
+        {
+          source: '/_next/image',
+          has: [{ type: 'query', key: 'url', value: '/shop-static/.*' }],
+          destination: `${SHOP_ZONE_URL}/_next/image`,
+        },
+      ],
+      afterFiles: [
+        { source: '/shop', destination: `${SHOP_ZONE_URL}/shop` },                          // 頁面
+        { source: '/shop/:path+', destination: `${SHOP_ZONE_URL}/shop/:path+` },
+        { source: '/shop-static/:path+', destination: `${SHOP_ZONE_URL}/shop-static/:path+` }, // JS、CSS、public 檔案
+      ],
+    };
+  },
+};
+export default nextConfig;</code></pre>
+<p><strong>③ 連結：同 zone 用 <code>&lt;Link&gt;</code>，跨 zone 用 <code>&lt;a&gt;</code>。</strong>由共用元件依路徑前綴判斷，不靠人記（§6.1）。</p>
+<pre class="code"><code>// 共用的導覽元件（每個 zone 都用同一份）
+const ZONE_PREFIXES = { shop: ['/shop'], blog: ['/blog'] }; // 必須和 A 的 rewrites 一致
+
+function zoneOf(href) {
+  for (const [zone, prefixes] of Object.entries(ZONE_PREFIXES)) {
+    if (prefixes.some((p) =&gt; href === p || href.startsWith(`${p}/`))) return zone;
+  }
+  return 'main';
+}
+
+function ZoneLink({ href, children }) {
+  return zoneOf(href) === CURRENT_ZONE
+    ? &lt;Link href={href}&gt;{children}&lt;/Link&gt;  // 同 zone：不重新載入頁面
+    : &lt;a href={href}&gt;{children}&lt;/a&gt;;       // 跨 zone：整頁載入
+}</code></pre>
+<p>如果入口改用 Ingress 分流，②的規則就搬到 Ingress，①和③不變。</p>
+
+<h2 id="deploy">4. 部署</h2>
+<h3 id="deploy-unit">4.1 部署單位</h3>
+<p>每個 zone 是一個獨立的 image（<code>output: 'standalone'</code> 的多階段 Dockerfile），各自 build、各自部署、各自回滾。只有入口 zone 對外，其他 zone 只在內網。B、C 啟動時<strong>不依賴 A</strong>：A 不通時仍能靠備援選單啟動並提供服務。</p>
+
+<h3 id="deploy-matrix">4.2 改了什麼要重新部署誰</h3>
+<div class="table-wrap">
+<table>
+  <caption>表 4　變更與部署範圍</caption>
+  <thead><tr><th>變更</th><th>要重新部署</th><th>說明</th></tr></thead>
+  <tbody>
+    <tr><td>某個 zone 的頁面或程式</td><td>只有該 zone</td><td>Multi-Zones 的主要好處</td></tr>
+    <tr><td>選單內容（Vault）</td><td>只有 A</td><td>B、C 不用動，60 秒內跟上（§5）</td></tr>
+    <tr><td>zone 的內部位址</td><td>A（<strong>重新 build</strong>）</td><td>rewrites 的目的地在 build 時寫進 <code>routes-manifest.json</code>，執行期改環境變數無效（已實測）。A 的 image 因此綁定環境，staging 與 production 要各自 build</td></tr>
+    <tr><td>新增一個 zone 或改路徑前綴</td><td>A、新 zone</td><td>A 要加 rewrites，也要更新共用的前綴表，否則 A 會用 <code>&lt;Link&gt;</code> 連到新 zone（§6.1）。其他既有 zone 不必更新：它們把不認得的前綴當成 A 的路徑，本來就用整頁載入</td></tr>
+    <tr><td>共用導覽列的樣式或行為</td><td>所有 zone</td><td>沒有一起部署的那段時間，各 zone 會顯示不同版本（§6.6）</td></tr>
+    <tr><td>某個 zone 升級 Next 主版號</td><td>只有該 zone</td><td>部署本身不受影響，但要重跑跨 zone 的導頁測試（§6.4）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="deploy-config">4.3 設定在 build 時還是執行期生效</h3>
+<p>原則：<strong>能在執行期讀的，都不要寫進 build</strong>，這樣同一個 image 才能用在多個環境。唯一寫進 build 的是 zone 位址，原因是 rewrites 的機制如此。選單在執行期讀；build 時不需要 Vault，也不需要其他 zone 在跑（已實測：A 與 Vault 都停止時，B、C 照樣 build 成功）。</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>設定</th><th>誰讀</th><th>生效時機</th></tr></thead>
+  <tbody>
+    <tr><td>zone 位址（<code>SHOP_ZONE_URL</code>、<code>BLOG_ZONE_URL</code>）</td><td>A</td><td>build</td></tr>
+    <tr><td>選單檔案（secret volume）</td><td>A；B、C 只在備援時讀</td><td>啟動時</td></tr>
+    <tr><td>A 的內部位址（<code>MAIN_ZONE_URL</code>）</td><td>B、C</td><td>執行期</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="deploy-availability">4.4 可用性：A 是單點</h3>
+<p>A 同時是入口和選單來源。A 停止時：</p>
+<ul>
+  <li><strong>用 A 分流時</strong>：全站無法使用，B、C 的備援沒有機會發揮。A 必須多副本並設健康檢查。</li>
+  <li><strong>改用 Ingress 分流時</strong>：B、C 照常服務，選單用備援；只有 A 的頁面停止。</li>
+</ul>
+<p>也就是說，§5 的選單備援要在 Ingress 分流下才有完整價值。這是建議正式環境評估 Ingress 的主要原因。</p>
+
+
+<h2 id="menu">5. 選單管理</h2>
+<h3 id="menu-needs">5.1 需求</h3>
+<ol>
+  <li>選單唯一的來源是 Vault，正式環境透過 secret volume 掛成檔案；Vault 更新後要重新部署才生效（現行規則）。</li>
+  <li><strong>改選單只部署一個專案</strong>，不能變成三個專案都要部署。</li>
+  <li>B、C 向 A 取得失敗時，仍要顯示一份真的選單。</li>
+  <li>build 不依賴 A，也不依賴 Vault。</li>
+</ol>
+
+<h3 id="menu-options">5.2 方案比較</h3>
+<div class="table-wrap">
+<table>
+  <caption>表 5　選單來源方案</caption>
+  <thead><tr><th>方案</th><th>改選單要部署</th><th>A 不通時</th><th>結論</th></tr></thead>
+  <tbody>
+    <tr><td>每個 zone 程式碼裡各寫一份</td><td>全部</td><td>不受影響</td><td>不採用：一定會越改越不一致</td></tr>
+    <tr><td>每個 zone 啟動時各自讀 Vault</td><td>全部</td><td>不受影響</td><td>不採用：違反需求 2</td></tr>
+    <tr><td>共用 npm 套件</td><td>全部（還要先發套件）</td><td>不受影響</td><td>不採用：適合放元件，不適合放內容</td></tr>
+    <tr><td>build 時抓 Vault</td><td>全部（還要重新 build）</td><td>不受影響</td><td>不採用：CI 要持有 Vault 憑證，build 結果無法重現</td></tr>
+    <tr><td>瀏覽器端向 A 抓</td><td>只有 A</td><td>沒有選單</td><td>不採用：選單不在初始 HTML，會閃動、不利 SEO</td></tr>
+    <tr><td><strong>A 擁有，B、C 在 server 端向 A 取得 + 快取 + 備援</strong></td><td><strong>只有 A</strong></td><td>用快取或自己掛載的檔案</td><td><span class="tag ok">採用</span></td></tr>
+  </tbody>
+</table>
+</div>
+<p>另外評估過把選單 JSON 放進環境變數，不採用：.env、shell、compose 的跳脫規則各不相同，Next 讀 .env 還會展開 <code>$</code>，也沒辦法做結構化驗證。改成放檔案，環境變數只放檔案路徑。</p>
+
+<h3 id="menu-design">5.3 採用的設計</h3>
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  V[(Vault)] -->|同步| S[K8s Secret]
+  S -->|secret volume| FA["A 的選單檔"]
+  S -->|secret volume| FB["B、C 的選單檔<br/>（只在備援時讀）"]
+  FA -->|啟動時讀一次並驗證，<br/>格式錯就啟動失敗| MA[A 記憶體]
+  MA --> NA[A 的導覽列]
+  MA --> API["A：GET /api/menu"]
+  API -->|"server 端取得，快取 60 秒"| BC[B、C 的導覽列]
+  FB -.->|備援 ②| BC
+</pre>
+</div>
+<p class="figcap">圖 2　選單資料流</p>
+<div class="table-wrap">
+<table>
+  <caption>表 6　B、C 取得選單的規則</caption>
+  <thead><tr><th>狀況</th><th>行為</th></tr></thead>
+  <tbody>
+    <tr><td>快取未滿 60 秒</td><td>直接用快取，不呼叫 A</td></tr>
+    <tr><td>快取過期</td><td>先回傳舊值，背景向 A 更新；更新失敗就繼續用舊值（<strong>備援 ①</strong>）</td></tr>
+    <tr><td>剛啟動且 A 不通</td><td>等 1 秒後改讀自己掛載的同一份 Vault 檔案（<strong>備援 ②</strong>），之後 10 秒內不再嘗試 A，避免每個請求都多等 1 秒</td></tr>
+    <tr><td>檔案也不能用</td><td>空選單並記錄 error log</td></tr>
+  </tbody>
+</table>
+</div>
+<p>兩層備援都不需要人工維護：備援 ① 是 A 最近一次提供的內容；備援 ② 也是 Vault 的資料，只是更新時間點晚一些（B、C 下次部署時）。</p>
+
+<h3 id="menu-flow">5.4 更新流程</h3>
+<div class="figure">
+<pre class="mermaid">
+sequenceDiagram
+  participant Ops as 維運
+  participant V as Vault
+  participant A as A
+  participant B as B / C
+  Ops->>V: 修改選單
+  V-->>A: 同步到 Secret（還不會生效）
+  Ops->>A: 重新部署 A
+  Note over A: A 的頁面立即顯示新選單
+  B->>A: 快取過期後背景呼叫 /api/menu
+  A-->>B: 新選單
+  Note over B: 約 60 秒內顯示新選單，B、C 不必重新部署
+</pre>
+</div>
+<p class="figcap">圖 3　選單更新流程</p>
+
+<h3 id="menu-cost">5.5 代價</h3>
+<ul>
+  <li>build 時沒有選單，所以用到選單的頁面全部改成每次請求在 server render，失去整頁 CDN 快取。</li>
+  <li>每個 Pod 各有一份快取。A 更新後最多 60 秒內，同一位使用者可能在不同 Pod 看到新舊不同的選單。</li>
+</ul>
+
+<h2 id="pitfalls">6. Multi-Zones 會遇到的問題</h2>
+<p>以下都是在 demo 中實際遇到或實測確認的問題。大多數問題的共同特徵是<strong>畫面看起來正常</strong>：Next 會退回整頁載入，使用者最後還是到得了，錯誤只留在 network 面板或 server log 裡，很容易漏掉。</p>
+
+<h3 id="pitfall-link">6.1 跨 zone 的連結必須整頁載入</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>在 A 用 <code>&lt;Link href="/shop"&gt;</code> 連到 B。dev 環境下 B 連續回 307，約 20 次後瀏覽器報 <code>ERR_TOO_MANY_REDIRECTS</code>，然後才改成整頁載入。production 環境下，只要打開含這個連結的頁面，prefetch 就會用 A 的路徑去載入 B 的 JS，產生 404 和 <code>ChunkLoadError</code>。</dd>
+  <dt>原因</dt><dd><code>&lt;Link&gt;</code> 會用 A 自己的 client router 去要 B 的頁面資料，但兩邊是不同的應用，build、版本都不同。</dd>
+  <dt>做法</dt><dd>跨 zone 一律用 <code>&lt;a&gt;</code>。不靠人記：共用的導覽元件依網址前綴自動判斷該用 <code>&lt;Link&gt;</code> 還是 <code>&lt;a&gt;</code>，前綴表和 A 的 rewrites 是同一份。頁面內文的連結則要靠 code review 把關。</dd>
+</dl>
+
+<h3 id="pitfall-assets">6.2 靜態資源與 public 檔案衝突</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>每個 zone 的 JS、CSS 預設都在 <code>/_next/static/</code>，經由同一個網域時會互相覆蓋。</dd>
+  <dt>原因</dt><dd>所有 zone 共用同一個網域和相同的預設路徑；<code>assetPrefix</code> 也不會套用到 <code>public/</code> 底下的檔案。</dd>
+  <dt>做法</dt><dd>每個 zone 設自己的 <code>assetPrefix</code>，<code>public/</code> 的檔案一律放在 <code>public/&lt;prefix&gt;/</code> 底下，網址就會落在既有的轉發規則內。</dd>
+</dl>
+
+<h3 id="pitfall-paths">6.3 官方文件沒寫的兩條路徑</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>① Pages Router 的 zone 內 <code>&lt;Link&gt;</code> 沒有報錯，但默默變成整頁載入（只有 Pages Router 的 zone 會遇到）。② B、C 的圖片其實是由 A 的圖片最佳化器處理的，B、C 自己的 <code>images</code> 設定都沒有生效。</dd>
+  <dt>原因</dt><dd><code>_next/data</code>（Pages Router 的頁面資料）和 <code>_next/image</code>（圖片最佳化）都<strong>不會</strong>加上 <code>assetPrefix</code>，請求會打到 A。這點已從 Next 15.5 與 16.4 的原始碼確認。</dd>
+  <dt>做法</dt><dd>在 A 加兩條優先比對的 rewrite：<code>/_next/data/*/blog…</code> 轉給 C；<code>/_next/image</code> 依 <code>url</code> 參數的前綴分別轉給 B 或 C。另一個做法是讓 B、C 全部的圖片都關掉最佳化（<code>unoptimized</code>），這樣問題就不存在，但代價是失去圖片最佳化，所以不採用。改用 Ingress 分流時，這兩條規則要一起搬過去。</dd>
+</dl>
+
+<h3 id="pitfall-versions">6.4 zone 內切頁被 redirect 到別的 zone</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>在 B 的頁面點 zone 內的 <code>&lt;Link&gt;</code>，目的頁在 server 端 <code>redirect()</code> 到 A 的頁面（例如權限不足導去 A）。最後確實到了 A，但 A 先回了 500（<code>The router state header was sent but could not be parsed</code>），之後才改成整頁載入。</dd>
+  <dt>原因</dt><dd>App Router 的 server 端 redirect 會讓 client router 繼續用 RSC 請求去要目的頁。目的頁在 A，A（Next 15）看不懂 B（Next 16）送來的 router state 格式。Pages Router 收到 redirect 會直接整頁載入，沒有這個問題。</dd>
+  <dt>做法</dt><dd>不要讓 zone 內的 soft nav 被 redirect 到別的 zone：已知會被導走的連結改用 <code>&lt;a&gt;</code>，或依條件切換 <code>&lt;Link&gt;</code>／<code>&lt;a&gt;</code>。demo 改完後 A 的 error log 是 0 筆。一般原則：zone 可以各自升級版本，但每次升級都要重跑跨 zone 的導頁測試；就算版本相同，不同 zone 也是不同的 build，不要假設它們能互相處理 RSC 請求。</dd>
+</dl>
+
+<h3 id="pitfall-buildtime">6.5 zone 位址在 build 時寫死</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>在執行期把 A 的 <code>SHOP_ZONE_URL</code> 改成無效位址，<code>/shop</code> 仍然由原本的 B 回應。</dd>
+  <dt>原因</dt><dd>rewrites 在 build 時就已經算好，寫進 <code>routes-manifest.json</code>。</dd>
+  <dt>做法</dt><dd>A 的 image 依環境分別 build，zone 位址在 Dockerfile 裡用 build arg 傳入，沒傳就讓 build 失敗。或者改用 Ingress 分流（§3.1）。</dd>
+</dl>
+
+<h3 id="pitfall-shared-ui">6.6 共用 UI 越改越不一致</h3>
+<dl class="issue">
+  <dt>症狀</dt><dd>導覽列、design token 在每個 zone 各有一份，時間一久就會出現差異。</dd>
+  <dt>原因</dt><dd>zone 各自部署，沒有機制保證它們用的是同一版。</dd>
+  <dt>做法</dt><dd>demo：三份逐字相同的檔案，加上一個比對腳本（同時檢查 Tailwind、TypeScript 的版本）。正式專案建議抽成共用套件，React 和 <code>next/link</code> 設為 peer dependency，各 zone 自己決定何時升級；並接受部署期間各 zone 版本不同的那段落差。</dd>
+</dl>
+
+<h3 id="pitfall-css">6.7 CSS 會不會互相污染</h3>
+<dl class="issue">
+  <dt>結論</dt><dd>不會在執行期互相污染。跨 zone 一定是整頁載入，同一個頁面裡只會有一個 zone 的 CSS；各 zone 的 CSS 也因為 <code>assetPrefix</code> 而路徑不同。</dd>
+  <dt>真正的風險</dt><dd>各 zone 的 Tailwind 版本、token 或 reset 不一致，導致共用的導覽列在不同 zone 長得不一樣。做法和 §6.6 相同：token 放共用檔案，Tailwind 鎖同一個精確版本並自動比對。</dd>
+</dl>
+
+
+<h3 id="pitfall-react">6.8 App Router 執行的 React 版本不是你宣告的那個</h3>
+<dl class="issue">
+  <dt>觀察</dt><dd>App Router 執行的是 Next 內建的 React canary，不是 <code>package.json</code> 宣告的版本；只有 Pages Router 才會用到你安裝的 React。所以 App Router 的 zone 宣告 React 18 時，執行期其實是 19，型別和測試卻用 18。</dd>
+  <dt>做法</dt><dd>App Router 的 zone 宣告的 React 版本和 Next 對齊（19）。React 18 只有 Pages Router 的 zone 才真的用得到。</dd>
+</dl>
+
+<h2 id="decisions">7. 決策總表</h2>
+<div class="table-wrap">
+<table>
+  <caption>表 7　決策紀錄</caption>
+  <thead><tr><th>#</th><th>決策</th><th>考慮過的選項</th><th>採用</th><th>理由</th><th>代價</th></tr></thead>
+  <tbody>
+    <tr><td class="num">D1</td><td>前端拆分方式</td><td>單一 app／Multi-Zones／Module Federation／iframe</td><td>Multi-Zones</td><td>可以獨立部署、各自選版本，官方支援</td><td>跨 zone 整頁載入；§6 的各項規則</td></tr>
+    <tr><td class="num">D2</td><td>分流位置</td><td>A 的 rewrites／middleware／Ingress</td><td>demo：rewrites；正式：待審</td><td>官方建議，本機與部署行為一致</td><td>A 是單點；zone 位址在 build 時寫死</td></tr>
+    <tr><td class="num">D3</td><td>zone 的路徑設定</td><td><code>assetPrefix</code>／<code>basePath</code></td><td><code>assetPrefix</code></td><td>官方建議，A 轉發時不必處理前綴</td><td>public 檔案要放在前綴資料夾下</td></tr>
+    <tr><td class="num">D4</td><td>B、C 的圖片最佳化</td><td>全部關掉最佳化／A 依參數轉發</td><td>依參數轉發</td><td>保留各 zone 的圖片最佳化</td><td>A 多兩條規則，改用 Ingress 時要搬</td></tr>
+    <tr><td class="num">D5</td><td>連結用 Link 還是 a</td><td>人工判斷／共用元件依前綴判斷</td><td>共用元件判斷</td><td>人工判斷一定會漏，而且出錯時畫面看不出來</td><td>內文連結仍要靠 review</td></tr>
+    <tr><td class="num">D6</td><td>共用導覽列</td><td>各寫一份／相同檔案加比對／共用套件</td><td>demo：相同檔案；正式：共用套件</td><td>demo 不需要 registry；正式需要版本管理</td><td>部署期間各 zone 版本不同</td></tr>
+    <tr><td class="num">D7</td><td>選單來源</td><td>見表 5</td><td>A 擁有，B、C 在執行期取得</td><td>改選單只部署 A</td><td>B、C 依賴 A 的 API</td></tr>
+    <tr><td class="num">D8</td><td>選單備援</td><td>只有首頁／build 時快照／快取 + 自己掛載的檔案</td><td>快取 + 自己掛載的檔案</td><td>A 不通時仍顯示真的選單，而且不需要人工維護</td><td>B、C 要掛同一份 secret</td></tr>
+    <tr><td class="num">D9</td><td>有選單的頁面怎麼 render</td><td>靜態 + ISR／每次請求 render</td><td>每次請求 render</td><td>build 時拿不到選單；用 ISR 的話，部署後第一批使用者會看到舊選單</td><td>失去整頁 CDN 快取</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="risks">8. 風險與待審議</h2>
+<h3 id="risks-list">8.1 風險</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>項目</th><th>影響</th><th>程度</th><th>因應</th></tr></thead>
+  <tbody>
+    <tr><td>A 是入口，也是選單來源</td><td>A 停止時全站無法使用</td><td><span class="tag bad">高</span></td><td>多副本 + 健康檢查；評估改用 Ingress 分流</td></tr>
+    <tr><td>zone 之間的版本差異</td><td>soft nav 碰到別的 zone 時出錯，畫面卻看不出來</td><td><span class="tag warn">中</span></td><td>跨 zone 導頁測試列入每次升級的必測項目；監控 A 的 5xx</td></tr>
+    <tr><td>有選單的頁面每次請求都要 render</td><td>server 負載增加</td><td><span class="tag warn">中</span></td><td>選單已經有快取，額外成本主要是 render 本身；需要用正式流量評估</td></tr>
+    <tr><td>共用 UI 越改越不一致</td><td>各 zone 的導覽列長得不一樣</td><td><span class="tag warn">中</span></td><td>共用套件 + CI 檢查版本</td></tr>
+    <tr><td>A 的 image 綁定環境</td><td>每個環境要各自 build</td><td><span class="tag ok">低</span></td><td>流程上接受；改用 Ingress 後就不需要</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="risks-questions">8.2 待審議事項</h3>
+<ol>
+  <li><strong>正式環境的分流</strong>：沿用 A 的 rewrites，還是改用 Ingress？改用 Ingress 可以解決 A 單點和「zone 位址寫在 build 裡」兩個問題，但 §6.3 的規則要搬到 Ingress，本機開發也要另外模擬。</li>
+  <li><strong>共用導覽列的形式</strong>：抽成共用套件的話，發版和升級的責任歸誰？</li>
+  <li><strong>選單生效時間</strong>：目前最慢 60 秒。業務上可以接受多久？</li>
+  <li><strong>各 zone 的 Next 版本策略</strong>：允許各自升級（每次重跑跨 zone 測試），還是規定同一個主版號？</li>
+  <li><strong>可觀測性</strong>：導覽列已經標示選單來源（正常、過期、備援檔、空），是否送進監控並設告警？A 的 5xx 是否要特別監控跨 zone 的 RSC 請求？</li>
+</ol>
+
+<h2 id="evidence">附錄：驗證結果摘要</h2>
+<p>驗證方式是用 curl 檢查狀態碼與回應來源，再用 headless Chrome 實際點擊並讀取頁面狀態。本機 dev、本機 production、Docker Compose 三種環境都跑過。</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>情境</th><th>結果</th></tr></thead>
+  <tbody>
+    <tr><td>zone 內切頁／跨 zone 切頁</td><td>zone 內是 soft nav（document 沒有重新載入），跨 zone 是整頁載入，三個 zone 都相同</td></tr>
+    <tr><td>靜態資源、<code>_next/data</code>、<code>_next/image</code></td><td>都由正確的 zone 回應</td></tr>
+    <tr><td>執行期改 zone 位址</td><td>沒有效果，證明位址在 build 時寫死</td></tr>
+    <tr><td>Vault 改了但還沒重新部署</td><td>三個 zone 仍是舊選單（符合現行規則）</td></tr>
+    <tr><td>只重新部署 A</td><td>A 立即更新；B、C 在 <strong>57 秒</strong>時更新，容器沒有重啟</td></tr>
+    <tr><td>A 停止 → B、C 重啟</td><td>B、C 先用快取（備援 ①）；重啟後改用自己掛載的檔案（備援 ②）</td></tr>
+    <tr><td>A 沒有回應（容器暫停）</td><td>第一個請求 1.07 秒後改用備援，之後每個請求 0.011 秒</td></tr>
+    <tr><td>A、Vault 都停止時 build B、C</td><td>成功</td></tr>
+    <tr><td>缺少選單檔</td><td>該 zone 啟動失敗（exit 1），不會帶著錯誤的設定上線</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="footer">細部規格、介面合約、操作指令與逐項驗收紀錄見專案根目錄的 <code>PLAN.md</code>（§1–§8 架構、§11 選單）。</p>
+</div>
+</div>
+<a class="to-top" href="#top">回到頂端</a>
+
+<script>
+(() => {
+  const page = document.querySelector('.page');
+  const headings = [...page.querySelectorAll('h2, h3')];
+
+  // 小節沒有 id 的，依所屬章節產生穩定的 id（例如 routing-2）
+  let parent = 'section';
+  let n = 0;
+  for (const h of headings) {
+    if (h.tagName === 'H2') { parent = h.id || parent; n = 0; continue; }
+    n += 1;
+    if (!h.id) h.id = `${parent}-${n}`;
+  }
+
+  // 每個標題加上 # 錨點
+  for (const h of headings) {
+    const a = document.createElement('a');
+    a.className = 'anchor';
+    a.href = `#${h.id}`;
+    a.textContent = '#';
+    a.setAttribute('aria-label', `連結到「${h.textContent.trim()}」`);
+    h.append(a);
+  }
+
+  const label = (h) => [...h.childNodes].filter((c) => !(c.classList && c.classList.contains('anchor')))
+    .map((c) => c.textContent).join('').trim();
+
+  // 左側導覽窗格
+  const side = document.getElementById('sidenav-list');
+  const sideLinks = new Map();
+  for (const h of headings) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = `#${h.id}`;
+    a.textContent = label(h);
+    if (h.tagName === 'H3') a.className = 'sub';
+    li.append(a);
+    side.append(li);
+    sideLinks.set(h.id, a);
+  }
+
+  // 文件內目錄補上小節
+  const tocItems = [...document.querySelectorAll('.toc > ol > li')];
+  for (const li of tocItems) {
+    const id = li.querySelector('a')?.getAttribute('href')?.slice(1);
+    const subs = headings.filter((h) => h.tagName === 'H3' && h.id.startsWith(`${id}-`));
+    const h2 = document.getElementById(id);
+    const owned = subs.filter((h) => {
+      let p = h.previousElementSibling;
+      while (p && p.tagName !== 'H2') p = p.previousElementSibling;
+      return p === h2;
+    });
+    if (!owned.length) continue;
+    const ol = document.createElement('ol');
+    for (const h of owned) {
+      const sli = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = `#${h.id}`;
+      a.textContent = label(h);
+      sli.append(a);
+      ol.append(sli);
+    }
+    li.append(ol);
+  }
+
+  // 標示目前所在的章節
+  const setCurrent = (id) => {
+    for (const [key, a] of sideLinks) a.classList.toggle('current', key === id);
+  };
+  const update = () => {
+    let current = headings[0]?.id;
+    for (const h of headings) {
+      if (h.getBoundingClientRect().top <= 80) current = h.id; else break;
+    }
+    setCurrent(current);
+  };
+  addEventListener('scroll', update, { passive: true });
+  addEventListener('hashchange', () => {
+    const el = document.getElementById(location.hash.slice(1));
+    if (el) el.scrollIntoView();
+  });
+  update();
+
+  // 帶著 #section 開啟時，等版面（含圖表）穩定後再定位一次
+  if (location.hash) {
+    const go = () => document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    addEventListener('load', () => setTimeout(go, 300));
+  }
+})();
+</script>

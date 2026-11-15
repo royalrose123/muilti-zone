@@ -1,0 +1,7 @@
+/* 全站共用的 design token。各 zone 只在自己的 globals.css 另外定義 --color-zone。 */
+@theme {
+  --color-zone-main: #2563eb;
+  --color-zone-shop: #16a34a;
+  --color-zone-blog: #ea580c;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+}

@@ -1,0 +1,11 @@
+# 除錯用：額外把 B、C、auth-api 對應到 host，方便直接開 zone 的頁面。預設不載入。
+services:
+  b:
+    ports:
+      - "8081:3001"
+  c:
+    ports:
+      - "8082:3002"
+  auth-api:
+    ports:
+      - "4000:4000"

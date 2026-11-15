@@ -1,0 +1,16 @@
+[
+  {
+    "id": "u1",
+    "username": "alice",
+    "name": "Alice",
+    "role": "user",
+    "password": "scrypt$ca9584fe936c832c8dd9f5a8b92a79ff$f406d643609c1f84f8c23c8742e0f08d80e1997c23a786be079cd4ce980ecda7ea0e3eead912df79e825d8da2ace36ac48bb61fcffe9fd2614023475295fcb51"
+  },
+  {
+    "id": "u2",
+    "username": "admin",
+    "name": "Admin",
+    "role": "admin",
+    "password": "scrypt$8dc70db52104ff2ee90bd82d2f9e07d5$d9013f7514eef7f85605bfaa00f753fbb8ceff0fad794ca81ef9aca6bd69a5c0f5755977f7bbbf16411b97743f35e3c1e4cac1e87b6d561e12115ac5b86c00c6"
+  }
+]
