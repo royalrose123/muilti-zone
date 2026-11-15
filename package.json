@@ -5,6 +5,7 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "install:all": "npm --prefix a install && npm --prefix b install && npm --prefix c install",
     "dev": "concurrently -k -n A,B,C,AUTH -c blue,green,yellow,magenta \"npm --prefix a run dev\" \"npm --prefix b run dev\" \"npm --prefix c run dev\" \"npm --prefix auth-api run dev\"",
     "build:all": "npm --prefix a run build && npm --prefix b run build && npm --prefix c run build",

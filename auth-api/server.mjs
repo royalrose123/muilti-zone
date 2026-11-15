@@ -93,6 +93,17 @@ const server = createServer(async (req, res) => {
   console.log(`[auth-api] ${req.method} ${path}${result.username ? ` ${result.username}` : ''} → ${result.status}`);
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `[auth-api] port ${PORT} 已被占用（常見原因：docker:up:debug 的 auth-api 正在跑，可先 npm run docker:down）`,
+    );
+  } else {
+    console.error(`[auth-api] 啟動失敗：${err.message}`);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[auth-api] listening on :${PORT}（${users.size} 個帳號）`);
 });
