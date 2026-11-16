@@ -211,6 +211,7 @@ dl.issue dd ul { margin: 0; }
     <li><a href="#deploy">部署</a></li>
     <li><a href="#menu">選單管理</a></li>
     <li><a href="#pitfalls">Multi-Zones 會遇到的問題</a></li>
+    <li><a href="#embed">在同一頁嵌入其他 zone 的元件</a></li>
     <li><a href="#decisions">決策總表</a></li>
     <li><a href="#risks">風險與待審議</a></li>
     <li><a href="#evidence">附錄：驗證結果摘要</a></li>
@@ -220,11 +221,12 @@ dl.issue dd ul { margin: 0; }
 <h2 id="summary">1. 摘要</h2>
 <p>網站由多個各自建置、各自部署的 Next.js 應用（zone）組成，使用者只看到單一網域。入口 zone A 依路徑前綴把請求轉給負責的 zone。同一個 zone 內切頁是 client-side navigation，跨 zone 一律整頁載入。</p>
 <p>demo 用三個刻意不同的 zone 驗證：A 是 Next 15 App Router，B 是 Next 16 App Router，C 是 Next 15 Pages Router + React 18。三者可以共存，但必須遵守幾條規則（§6），其中最重要的一條是：<strong>不同 zone 要當成彼此不相容的應用看待</strong>，任何進入另一個 zone 的導頁都必須是整頁載入。</p>
-<p>三個關鍵決策：</p>
+<p>四個關鍵決策：</p>
 <ol>
-  <li><strong>分流</strong>：demo 由 A 的 rewrites 分流。正式環境是否改由 Ingress 分流，列為待審議（§3.1、§8）。</li>
+  <li><strong>分流</strong>：demo 由 A 的 rewrites 分流。正式環境是否改由 Ingress 分流，列為待審議（§3.1、§9）。</li>
   <li><strong>部署</strong>：每個 zone 獨立部署，改哪個 zone 就只部署哪個（§4.2）。</li>
-  <li><strong>選單</strong>：由 A 擁有，B、C 在執行期向 A 取得並快取，另有兩層備援。<strong>改選單只需要重新部署 A</strong>，B、C 約 60 秒內跟上（實測 57 秒）（§5）。</li>
+  <li><strong>選單</strong>：放在 ConfigMap，由 A 擁有，B、C 在執行期向 A 取得並快取，另有兩層備援。<strong>改選單只需要重新部署 A</strong>，B、C 約 60 秒內跟上（實測 56～57 秒）（§5）。</li>
+  <li><strong>同一頁混用其他 zone 的元件</strong>：用 Web Component。C 的現有元件不用改寫，<strong>C 單獨部署 A 就拿到新版</strong>（§7）。</li>
 </ol>
 <p>主要代價：A 是單點；B、C 為了顯示選單改成每次請求 render；跨 zone 的切頁體驗是整頁載入。</p>
 
@@ -356,7 +358,8 @@ function ZoneLink({ href, children }) {
     <tr><td>某個 zone 的頁面或程式</td><td>只有該 zone</td><td>Multi-Zones 的主要好處</td></tr>
     <tr><td>選單內容（ConfigMap）</td><td>只有 A</td><td>B、C 不用動，60 秒內跟上（§5）。用 Kustomize 的 configMapGenerator 時，改內容會自動觸發 A 重新部署</td></tr>
     <tr><td>zone 的內部位址</td><td>A（<strong>重新 build</strong>）</td><td>rewrites 的目的地在 build 時寫進 <code>routes-manifest.json</code>，執行期改環境變數無效（已實測）。A 的 image 因此綁定環境，staging 與 production 要各自 build</td></tr>
-    <tr><td>新增一個 zone 或改路徑前綴</td><td>A、新 zone</td><td>A 要加 rewrites，也要更新共用的前綴表，否則 A 會用 <code>&lt;Link&gt;</code> 連到新 zone（§6.1）。其他既有 zone 不必更新：它們把不認得的前綴當成 A 的路徑，本來就用整頁載入</td></tr>
+    <tr><td>新增一個 zone 或改路徑前綴</td><td>A、新 zone</td><td>A 要加 rewrites，也要更新共用的前綴表，否則 A 會用 <code>&lt;Link&gt;</code> 連到新 zone（§6.1）。其他既有 zone 不必更新：它們把不認得的前綴當成 A 的路徑，本來就用整頁載入。新前綴屬於 Pages Router 的 zone 時，A 還要加對應的 <code>_next/data</code> 規則（§7.4）</td></tr>
+    <tr><td>嵌在 A 頁面裡的 C 元件（Web Component）</td><td>只有 C</td><td>A 頁面重新整理就拿到新版（已實測：A 容器沒有重啟）（§7）</td></tr>
     <tr><td>共用導覽列的樣式或行為</td><td>所有 zone</td><td>沒有一起部署的那段時間，各 zone 會顯示不同版本（§6.6）</td></tr>
     <tr><td>某個 zone 升級 Next 主版號</td><td>只有該 zone</td><td>部署本身不受影響，但要重跑跨 zone 的導頁測試（§6.4）</td></tr>
   </tbody>
@@ -552,10 +555,84 @@ sequenceDiagram
   <dt>做法</dt><dd>App Router 的 zone 宣告的 React 版本和 Next 對齊（19）。React 18 只有 Pages Router 的 zone 才真的用得到。</dd>
 </dl>
 
-<h2 id="decisions">7. 決策總表</h2>
+<h2 id="embed">7. 在同一頁嵌入其他 zone 的元件</h2>
+<p>Multi-Zones 以「整頁」為單位分工。實務上常會遇到「A 的頁面只有一個區塊屬於 C」，例如 A 的首頁要放 C 的訂單列表。demo 驗證了這個情境的做法。</p>
+
+<h3 id="embed-needs">7.1 需求</h3>
+<ol>
+  <li>C 已經在自己頁面上使用的元件，<strong>不需要改寫</strong>就能放進 A 的頁面。</li>
+  <li>元件自己取資料，A 只傳必要的參數（例如訂單編號）。</li>
+  <li><strong>C 單獨部署</strong>後，A 不需要任何動作就拿到新版。</li>
+  <li>C 的樣式不影響 A，A 的樣式也不影響 C。</li>
+</ol>
+
+<h3 id="embed-options">7.2 方案比較</h3>
 <div class="table-wrap">
 <table>
-  <caption>表 8　決策紀錄</caption>
+  <caption>表 8　嵌入其他 zone 元件的方式</caption>
+  <thead><tr><th>方式</th><th>C 更新後 A 要部署嗎</th><th>互動</th><th>SEO／SSR</th><th>結論</th></tr></thead>
+  <tbody>
+    <tr><td>iframe</td><td>不用</td><td>可以，但高度、路由、溝通都要另外處理</td><td>差</td><td>不採用</td></tr>
+    <tr><td>共用 npm 套件</td><td><strong>要</strong>（A 升版才生效）</td><td>完整</td><td>好</td><td>同一團隊、能接受 A 跟著發版時最穩</td></tr>
+    <tr><td>C 只提供資料 API，畫面 A 自己做</td><td>不用（UI 改版除外）</td><td>完整</td><td>好</td><td>違反需求 1：UI 要寫兩份</td></tr>
+    <tr><td>伺服器端拼接 C 的 HTML 片段</td><td>不用</td><td>幾乎沒有</td><td>好</td><td>只適合純展示的內容</td></tr>
+    <tr><td><strong>Web Component（Custom Element + Shadow DOM）</strong></td><td><strong>不用</strong></td><td>完整</td><td>差（內容要等 JS）</td><td><span class="tag ok">採用</span></td></tr>
+    <tr><td>Module Federation</td><td>不用</td><td>完整</td><td>可以</td><td>不採用：Next App Router 官方不支援，React 版本互相牽動</td></tr>
+    <tr><td>A 直接 render C 的 Server Component</td><td>—</td><td>—</td><td>—</td><td>不可行：不同 zone 的 RSC 格式不相容（§6.4）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="embed-design">7.3 採用的做法</h3>
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  subgraph APage["A 的頁面"]
+    T["member-orders 標籤<br/>（C 的元件）"]
+  end
+  APage -->|"載入 /blog-static/widget/member-widgets.js"| A1[A 入口]
+  T -->|"fetch /member/api/orders（同網域，自動帶 cookie）"| A1
+  A1 -->|rewrite| C["C<br/>JS 檔、API"]
+  C -->|"X-User-Id"| BE[(後端服務)]
+  T -.->|"order-select 事件"| APage
+</pre>
+</div>
+<p class="figcap">圖 4　A 頁面中的 C 元件：程式碼與資料都來自 C，只是經過入口轉發</p>
+<ul>
+  <li><strong>打包</strong>：C 用 Vite 的 library mode，把<strong>現有的元件</strong>包成三個自訂標籤（表格、表單、檢視），輸出一支 JS 放在 C 的 <code>assetPrefix</code> 底下。A 現有的轉發規則已經涵蓋，A 不用加規則。</li>
+  <li><strong>資料</strong>：元件在瀏覽器端呼叫 C 的 API（<code>/member/api/...</code>）。rewrite 會轉發所有 HTTP 請求（含 PUT、body、cookie），所以 API 一樣經由入口轉給 C，不需要 CORS，登入狀態也自動帶上。</li>
+  <li><strong>溝通</strong>：A 用 HTML 屬性傳參數（<code>order-id</code>），C 用事件通知 A（<code>order-select</code>），A 決定要導去哪一頁。兩邊沒有互相 import 程式碼。</li>
+  <li><strong>樣式</strong>：C 的 CSS 放在 Shadow DOM 裡，A 的樣式進不來，C 的樣式也出不去。</li>
+</ul>
+<pre class="code"><code>&lt;!-- A 的頁面只需要這樣用 --&gt;
+&lt;script type="module" src="/blog-static/widget/member-widgets.js" crossorigin="anonymous"&gt;&lt;/script&gt;
+&lt;member-orders&gt;&lt;/member-orders&gt;                          &lt;!-- 表格：點一列發出 order-select --&gt;
+&lt;member-order-detail order-id="ORD-20261110-0025"&gt;&lt;/member-order-detail&gt;</code></pre>
+
+<h3 id="embed-pitfalls">7.4 實作時要注意的事</h3>
+<dl class="issue">
+  <dt>元件</dt><dd>widget 不是在 Next 裡執行，元件不能 import <code>next/*</code>（Link、router、Image）。導頁這類行為改成用 props 從外面傳入。Server Component 要拆成「只吃 props 的畫面」與「取資料」兩層。Pages Router 的元件本來就是吃 props，通常可以直接用。</dd>
+  <dt>樣式</dt><dd>
+    <ul>
+      <li><code>global.css</code> 在 Next 裡是 layout 匯入的，widget 不會自動帶入，入口要自己匯入一次。</li>
+      <li>放進 Shadow DOM 後，<code>:root</code>、<code>body</code> 規則不生效，要補 <code>:host</code>；<code>@font-face</code> 要放在 A 的頁面上。</li>
+      <li>Tailwind 用到 <code>@property</code> 的 utility（陰影、漸層、transform）在 Shadow DOM 內不生效，需要把 <code>@property</code> 規則另外注入到頁面上。</li>
+    </ul>
+  </dd>
+  <dt>路由</dt><dd>
+    <ul>
+      <li>Pages Router 的 API 只能放在 <code>/api/*</code>，而 <code>/api</code> 屬於 A。C 要在自己的設定把 <code>/member/api/*</code> 轉到 <code>/api/member/*</code>。</li>
+      <li><strong>給 Pages Router 的 zone 新增前綴時</strong>（例如 <code>/member</code>），A 除了頁面規則，還要加 <code>/_next/data/*/member/*</code> 的規則，否則 C 內的切頁會默默變成整頁載入（§6.3 的同一個問題，demo 實際踩到）。</li>
+    </ul>
+  </dd>
+  <dt>載入</dt><dd><code>next/script</code> 載入 module 時要加 <code>crossOrigin="anonymous"</code>，否則 Chrome 會警告 preload 沒被使用，檔案下載兩次。</dd>
+  <dt>代價</dt><dd>沒有 SSR，內容要等 JS 執行完才出現（A 要預留高度）；頁面上會有兩份 React（A 一份、widget 一份），widget 約 115 KB（gzip）；不適合需要 SEO 的區塊。</dd>
+</dl>
+
+<h2 id="decisions">8. 決策總表</h2>
+<div class="table-wrap">
+<table>
+  <caption>表 9　決策紀錄</caption>
   <thead><tr><th>#</th><th>決策</th><th>考慮過的選項</th><th>採用</th><th>理由</th><th>代價</th></tr></thead>
   <tbody>
     <tr><td class="num">D1</td><td>前端拆分方式</td><td>單一 app／Multi-Zones／Module Federation／iframe</td><td>Multi-Zones</td><td>可以獨立部署、各自選版本，官方支援</td><td>跨 zone 整頁載入；§6 的各項規則</td></tr>
@@ -566,14 +643,17 @@ sequenceDiagram
     <tr><td class="num">D6</td><td>共用導覽列</td><td>各寫一份／相同檔案加比對／共用套件</td><td>demo：相同檔案；正式：共用套件</td><td>demo 不需要 registry；正式需要版本管理</td><td>部署期間各 zone 版本不同</td></tr>
     <tr><td class="num">D7</td><td>選單來源</td><td>見表 5</td><td>A 擁有，B、C 在執行期取得</td><td>改選單只部署 A</td><td>B、C 依賴 A 的 API</td></tr>
     <tr><td class="num">D7b</td><td>選單檔存放位置</td><td>見表 6</td><td>ConfigMap 掛成檔案</td><td>不是機密；走 PR、可 revert；程式只換讀取路徑</td><td>改選單仍要重新部署 A（可用 configMapGenerator 自動化）</td></tr>
-    <tr><td class="num">D8</td><td>選單備援</td><td>只有首頁／build 時快照／快取 + 自己掛載的檔案</td><td>快取 + 自己掛載的檔案</td><td>A 不通時仍顯示真的選單，而且不需要人工維護</td><td>B、C 要掛同一份 secret</td></tr>
+    <tr><td class="num">D8</td><td>選單備援</td><td>只有首頁／build 時快照／快取 + 自己掛載的檔案</td><td>快取 + 自己掛載的檔案</td><td>A 不通時仍顯示真的選單，而且不需要人工維護</td><td>B、C 要掛同一份 ConfigMap</td></tr>
     <tr><td class="num">D9</td><td>有選單的頁面怎麼 render</td><td>靜態 + ISR／每次請求 render</td><td>每次請求 render</td><td>build 時拿不到選單；用 ISR 的話，部署後第一批使用者會看到舊選單</td><td>失去整頁 CDN 快取</td></tr>
+    <tr><td class="num">D10</td><td>同一頁嵌入其他 zone 的元件</td><td>見表 8</td><td>Web Component</td><td>現有元件不用改寫；C 單獨部署就生效；樣式隔離</td><td>沒有 SSR；頁面上兩份 React</td></tr>
+    <tr><td class="num">D11</td><td>嵌入的元件怎麼取資料</td><td>A 取好傳進去／元件自己呼叫 C 的 API</td><td>元件自己呼叫，經入口轉發到 C</td><td>A 不需要知道資料格式；同網域，不用 CORS，cookie 自動帶上</td><td>每個請求多經過入口一跳</td></tr>
+    <tr><td class="num">D12</td><td>嵌入元件的樣式隔離</td><td>不隔離／class 前綴／Shadow DOM</td><td>Shadow DOM</td><td>雙向隔離，不用改元件的 class</td><td><code>:root</code>、<code>@property</code>、<code>@font-face</code> 要另外處理</td></tr>
   </tbody>
 </table>
 </div>
 
-<h2 id="risks">8. 風險與待審議</h2>
-<h3 id="risks-list">8.1 風險</h3>
+<h2 id="risks">9. 風險與待審議</h2>
+<h3 id="risks-list">9.1 風險</h3>
 <div class="table-wrap">
 <table>
   <thead><tr><th>項目</th><th>影響</th><th>程度</th><th>因應</th></tr></thead>
@@ -582,17 +662,19 @@ sequenceDiagram
     <tr><td>zone 之間的版本差異</td><td>soft nav 碰到別的 zone 時出錯，畫面卻看不出來</td><td><span class="tag warn">中</span></td><td>跨 zone 導頁測試列入每次升級的必測項目；監控 A 的 5xx</td></tr>
     <tr><td>有選單的頁面每次請求都要 render</td><td>server 負載增加</td><td><span class="tag warn">中</span></td><td>選單已經有快取，額外成本主要是 render 本身；需要用正式流量評估</td></tr>
     <tr><td>共用 UI 越改越不一致</td><td>各 zone 的導覽列長得不一樣</td><td><span class="tag warn">中</span></td><td>共用套件 + CI 檢查版本</td></tr>
+    <tr><td>嵌入的元件與 A 頁面不同步</td><td>C 改了元件的屬性或事件格式，A 沒跟上就會壞掉</td><td><span class="tag warn">中</span></td><td>把標籤名稱、屬性、事件當成對外合約，只增不改；改動時保留舊版一段時間</td></tr>
     <tr><td>A 的 image 綁定環境</td><td>每個環境要各自 build</td><td><span class="tag ok">低</span></td><td>流程上接受；改用 Ingress 後就不需要</td></tr>
   </tbody>
 </table>
 </div>
 
-<h3 id="risks-questions">8.2 待審議事項</h3>
+<h3 id="risks-questions">9.2 待審議事項</h3>
 <ol>
   <li><strong>正式環境的分流</strong>：沿用 A 的 rewrites，還是改用 Ingress？改用 Ingress 可以解決 A 單點和「zone 位址寫在 build 裡」兩個問題，但 §6.3 的規則要搬到 Ingress，本機開發也要另外模擬。</li>
   <li><strong>共用導覽列的形式</strong>：抽成共用套件的話，發版和升級的責任歸誰？</li>
   <li><strong>選單生效時間</strong>：目前最慢 60 秒。業務上可以接受多久？</li>
   <li><strong>各 zone 的 Next 版本策略</strong>：允許各自升級（每次重跑跨 zone 測試），還是規定同一個主版號？</li>
+  <li><strong>哪些元件要做成 Web Component</strong>：只限「要讓其他 zone 嵌入、而且不需要 SEO」的區塊？標籤與事件的合約由誰維護？</li>
   <li><strong>可觀測性</strong>：導覽列已經標示選單來源（正常、過期、備援檔、空），是否送進監控並設告警？A 的 5xx 是否要特別監控跨 zone 的 RSC 請求？</li>
 </ol>
 
@@ -610,12 +692,15 @@ sequenceDiagram
     <tr><td>A 停止 → B、C 重啟</td><td>B、C 先用快取（備援 ①）；重啟後改用自己掛載的檔案（備援 ②）</td></tr>
     <tr><td>A 沒有回應（容器暫停）</td><td>第一個請求 1.07 秒後改用備援，之後每個請求 0.011 秒</td></tr>
     <tr><td>A 停止時 build B、C</td><td>成功</td></tr>
+    <tr><td>A 頁面中的 C 元件</td><td>表格的篩選、排序、分頁，表單的前後端驗證與儲存，訂單詳細都正常；和 C 自己頁面上的同一元件樣式完全一致，A 的樣式沒有被影響</td></tr>
+    <tr><td>只重新部署 C</td><td>A 的容器沒有重啟，A 頁面重新整理就看到 C 的新版元件</td></tr>
+    <tr><td>C 的後端服務停止</td><td>嵌入的元件顯示錯誤與「重試」，A 自己的內容不受影響</td></tr>
     <tr><td>缺少選單檔</td><td>該 zone 啟動失敗（exit 1），不會帶著錯誤的設定上線</td></tr>
   </tbody>
 </table>
 </div>
 
-<p class="footer">細部規格、介面合約、操作指令與逐項驗收紀錄見專案根目錄的 <code>PLAN.md</code>（§1–§8 架構、§11 選單）。</p>
+<p class="footer">細部規格、介面合約、操作指令與逐項驗收紀錄見專案根目錄的 <code>PLAN.md</code>（§1–§8 架構、§11 與 §15 選單、§13 嵌入其他 zone 的元件）。</p>
 </div>
 </div>
 <a class="to-top" href="#top">回到頂端</a>
