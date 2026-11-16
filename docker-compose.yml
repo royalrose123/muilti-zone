@@ -17,6 +17,21 @@ services:
       timeout: 3s
       retries: 15
 
+  # 模擬後端的會員資料服務（PLAN §13.3）：只在內網，由 C 的 API 呼叫
+  member-api:
+    image: node:20.20.2-alpine
+    working_dir: /app
+    volumes:
+      - ./member-api:/app:ro
+    command: ["node", "server.mjs"]
+    expose:
+      - "4100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4100/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
   vault:
     image: hashicorp/vault:2.2.2   # dev 模式：資料只存在記憶體
     environment:
@@ -98,6 +113,8 @@ services:
       MAIN_ZONE_URL: http://a:3000
       MENU_FALLBACK_FILE: /vault/secrets/menu.json
       NEXTAUTH_SECRET: *auth-secret
+      MEMBER_API_URL: http://member-api:4100
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:8082
     volumes:
       - menu-secrets:/vault/secrets:ro
     expose:
@@ -105,6 +122,8 @@ services:
     depends_on:
       vault-sync:
         condition: service_completed_successfully
+      member-api:
+        condition: service_started   # 不等 healthy：member-api 停掉時 C 仍要能啟動（widget 顯示錯誤狀態）
 
 volumes:
   menu-secrets: {}

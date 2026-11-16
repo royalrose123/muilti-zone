@@ -7,9 +7,9 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "install:all": "npm --prefix a install && npm --prefix b install && npm --prefix c install",
-    "dev": "concurrently -k -n A,B,C,AUTH -c blue,green,yellow,magenta \"npm --prefix a run dev\" \"npm --prefix b run dev\" \"npm --prefix c run dev\" \"npm --prefix auth-api run dev\"",
+    "dev": "concurrently -k -n A,B,C,AUTH,MEMBER,WIDGET -c blue,green,yellow,magenta,cyan,gray \"npm --prefix a run dev\" \"npm --prefix b run dev\" \"npm --prefix c run dev\" \"npm --prefix auth-api run dev\" \"npm --prefix member-api run dev\" \"npm --prefix c run widget:watch\"",
     "build:all": "npm --prefix a run build && npm --prefix b run build && npm --prefix c run build",
-    "start:all": "concurrently -k -n A,B,C,AUTH -c blue,green,yellow,magenta \"npm --prefix a run start\" \"npm --prefix b run start\" \"npm --prefix c run start\" \"npm --prefix auth-api run start\"",
+    "start:all": "concurrently -k -n A,B,C,AUTH,MEMBER -c blue,green,yellow,magenta,cyan \"npm --prefix a run start\" \"npm --prefix b run start\" \"npm --prefix c run start\" \"npm --prefix auth-api run start\" \"npm --prefix member-api run start\"",
     "check:shared": "node scripts/check-shared.mjs",
     "docker:up": "docker compose up --build -d",
     "docker:up:debug": "docker compose -f docker-compose.yml -f docker-compose.debug.yml up --build -d",
@@ -21,7 +21,9 @@
     "vault:get": "node scripts/vault.mjs get",
     "menu:pull": "node scripts/vault.mjs seed-if-empty vault/menu.seed.json && node scripts/vault.mjs write a/config/menu.json b/config/menu.json c/config/menu.json",
     "docker:stop:auth": "docker compose stop auth-api",
-    "docker:start:auth": "docker compose start auth-api"
+    "docker:start:auth": "docker compose start auth-api",
+    "docker:stop:member": "docker compose stop member-api",
+    "docker:start:member": "docker compose start member-api"
   },
   "devDependencies": {
     "concurrently": "9.2.5"

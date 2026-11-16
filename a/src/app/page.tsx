@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { MemberOrders } from '@/member-widgets/MemberOrders';
+import { AMenuPreview } from '@/components/AMenuPreview';
 
 const ZONES = [
   { zone: 'A · Main', paths: '/、/about（及其他未被接走的路徑）', next: '15.5.28', router: 'App Router', react: '19.3.1' },
@@ -77,7 +79,22 @@ export default function HomePage() {
         <li>
           <a href="/blog/drafts" className={linkClass}>/blog/drafts</a> → Zone C，草稿
         </li>
+        <li>
+          <a href="/member/orders" className={linkClass}>/member/orders</a> → Zone C，會員中心（C 自己的頁面）
+        </li>
       </ul>
+
+      <h2 className="mb-2 mt-8 text-xl font-semibold">A 自己的資料</h2>
+      <p className="mb-3 text-sm text-slate-600">
+        這個區塊由 Zone A 自己提供：瀏覽器直接呼叫 A 的 /api/menu（回應沒有 x-zone），可以和下方 C 的 widget 請求（x-zone: blog）對照。
+      </p>
+      <AMenuPreview />
+
+      <h2 className="mb-2 mt-8 text-xl font-semibold">我的訂單（C 的 widget）</h2>
+      <p className="mb-3 text-sm text-slate-600">
+        這個區塊由 Zone C 提供：A 只載入 C 的 Web Component（&lt;member-orders&gt;），資料由 widget 自己向 C 的 API 取得。點一列會在 A 內前往訂單詳細頁。
+      </p>
+      <MemberOrders />
     </main>
   );
 }

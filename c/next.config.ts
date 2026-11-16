@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   output: process.env.BUILD_STANDALONE === '1' ? 'standalone' : undefined,
   env: { ZONE_NEXT_VERSION: nextVersion },
   assetPrefix: '/blog-static',
+  // Pages Router 的 API 只能放在 pages/api，對外網址用 /member/api（PLAN §13.5）
+  async rewrites() {
+    return [{ source: '/member/api/:path*', destination: '/api/member/:path*' }];
+  },
   async headers() {
     return [{ source: '/:path*', headers: [{ key: 'x-zone', value: 'blog' }] }];
   },

@@ -3,7 +3,7 @@ export type ZoneId = 'main' | 'shop' | 'blog';
 /** 各 zone 負責的路徑前綴，必須與 a/next.config.ts 的 rewrites 一致。沒有命中的路徑都屬於 main。 */
 export const ZONE_PREFIXES: Readonly<Record<Exclude<ZoneId, 'main'>, readonly string[]>> = {
   shop: ['/shop'],
-  blog: ['/blog'],
+  blog: ['/blog', '/member'], // C 同時負責 /blog 與 /member（PLAN §13.2）
 };
 
 /** 依 href 判斷連結屬於哪個 zone（決定用 <Link> 還是 <a>）。 */

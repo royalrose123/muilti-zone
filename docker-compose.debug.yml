@@ -1,4 +1,4 @@
-# 除錯用：額外把 B、C、auth-api 對應到 host，方便直接開 zone 的頁面。預設不載入。
+# 除錯用：額外把 B、C、auth-api、member-api 對應到 host，方便直接開 zone 的頁面。預設不載入。
 services:
   b:
     ports:
@@ -9,3 +9,6 @@ services:
   auth-api:
     ports:
       - "4000:4000"
+  member-api:
+    ports:
+      - "4100:4100"

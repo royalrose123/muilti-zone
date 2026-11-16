@@ -1,0 +1,11 @@
+@import "../src/styles/globals.css";
+@source "../src/member";
+
+/* Shadow DOM 的邊界：不繼承 A 頁面的樣式，只用 C 自己的 token */
+:host {
+  all: initial;
+  display: block;
+  font-family: var(--font-sans);
+  color: #0f172a;
+  line-height: 1.5;
+}

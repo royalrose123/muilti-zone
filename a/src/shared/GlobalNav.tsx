@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ZONE } from '@/zone';
 import type { MenuItem, MenuSource } from './menu';
 import type { SessionUser } from './session';
+import { ZoneDebugToggle } from './ZoneDebugToggle';
 import { zoneOf, type ZoneId } from './zones';
 
 // Tailwind 需要看到完整 class 字串才會產生，所以用對照表，不要動態拼接。
@@ -69,6 +70,7 @@ export function GlobalNav({
             登入
           </ZoneLink>
         )}
+        <ZoneDebugToggle />
         <span className="text-xs text-slate-400">menu：{source}</span>
       </span>
     </nav>

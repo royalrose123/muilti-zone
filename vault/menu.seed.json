@@ -1,6 +1,7 @@
 [
-  { "label": "Home", "href": "/" },
-  { "label": "About", "href": "/about" },
-  { "label": "Shop", "href": "/shop" },
-  { "label": "Blog", "href": "/blog" }
+  {"label": "Home", "href": "/"},
+  {"label": "About", "href": "/about"},
+  {"label": "Shop", "href": "/shop"},
+  {"label": "Blog", "href": "/blog"},
+  {"label": "會員中心", "href": "/member/orders"}
 ]

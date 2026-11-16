@@ -1,0 +1,822 @@
+{
+  "profiles": {
+    "u1": {
+      "name": "Alice",
+      "email": "alice@example.com",
+      "phone": "0912345678",
+      "address": "台北市信義區市府路 1 號",
+      "birthday": "1995-04-12",
+      "newsletter": true,
+      "updatedAt": "2026-11-01T10:00:00+08:00"
+    },
+    "u2": {
+      "name": "Admin",
+      "email": "admin@example.com",
+      "phone": "0987654321",
+      "address": "",
+      "birthday": null,
+      "newsletter": false,
+      "updatedAt": "2026-11-01T10:00:00+08:00"
+    }
+  },
+  "orders": [
+    {
+      "id": "ORD-20260126-0001",
+      "userId": "u1",
+      "createdAt": "2026-01-26T13:18:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "MP-011",
+          "name": "滑鼠墊",
+          "unitPrice": 290,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 290,
+      "shippingFee": 80,
+      "total": 370,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20260110-0002",
+      "userId": "u1",
+      "createdAt": "2026-01-10T18:17:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "WC-005",
+          "name": "網路攝影機",
+          "unitPrice": 2490,
+          "quantity": 1
+        },
+        {
+          "sku": "MP-011",
+          "name": "滑鼠墊",
+          "unitPrice": 290,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 3070,
+      "shippingFee": 0,
+      "total": 3070,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260110-0003",
+      "userId": "u1",
+      "createdAt": "2026-01-10T09:12:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "HB-008",
+          "name": "USB-C 集線器",
+          "unitPrice": 1490,
+          "quantity": 2
+        },
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 2
+        },
+        {
+          "sku": "CB-007",
+          "name": "USB-C 傳輸線",
+          "unitPrice": 390,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 29170,
+      "shippingFee": 0,
+      "total": 29170,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260225-0004",
+      "userId": "u1",
+      "createdAt": "2026-02-25T19:31:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "CH-010",
+          "name": "辦公椅",
+          "unitPrice": 8900,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 8900,
+      "shippingFee": 0,
+      "total": 8900,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260210-0005",
+      "userId": "u1",
+      "createdAt": "2026-02-10T13:19:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "MS-002",
+          "name": "人體工學滑鼠",
+          "unitPrice": 1800,
+          "quantity": 2
+        },
+        {
+          "sku": "KB-001",
+          "name": "機械鍵盤",
+          "unitPrice": 3200,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 6800,
+      "shippingFee": 0,
+      "total": 6800,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260312-0006",
+      "userId": "u1",
+      "createdAt": "2026-03-12T12:08:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "LP-009",
+          "name": "桌上型檯燈",
+          "unitPrice": 1290,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 2580,
+      "shippingFee": 0,
+      "total": 2580,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260308-0007",
+      "userId": "u1",
+      "createdAt": "2026-03-08T11:25:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        },
+        {
+          "sku": "HB-008",
+          "name": "USB-C 集線器",
+          "unitPrice": 1490,
+          "quantity": 1
+        },
+        {
+          "sku": "CH-010",
+          "name": "辦公椅",
+          "unitPrice": 8900,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 23870,
+      "shippingFee": 0,
+      "total": 23870,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260415-0008",
+      "userId": "u1",
+      "createdAt": "2026-04-15T16:19:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 25800,
+      "shippingFee": 0,
+      "total": 25800,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260426-0009",
+      "userId": "u1",
+      "createdAt": "2026-04-26T11:49:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "WC-005",
+          "name": "網路攝影機",
+          "unitPrice": 2490,
+          "quantity": 2
+        },
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 30780,
+      "shippingFee": 0,
+      "total": 30780,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260414-0010",
+      "userId": "u1",
+      "createdAt": "2026-04-14T18:10:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 4580,
+      "shippingFee": 0,
+      "total": 4580,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260519-0011",
+      "userId": "u1",
+      "createdAt": "2026-05-19T11:53:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "KB-001",
+          "name": "機械鍵盤",
+          "unitPrice": 3200,
+          "quantity": 1
+        },
+        {
+          "sku": "DK-006",
+          "name": "筆電支架",
+          "unitPrice": 890,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 4980,
+      "shippingFee": 0,
+      "total": 4980,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260506-0012",
+      "userId": "u1",
+      "createdAt": "2026-05-06T12:42:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        },
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        },
+        {
+          "sku": "WC-005",
+          "name": "網路攝影機",
+          "unitPrice": 2490,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 22460,
+      "shippingFee": 0,
+      "total": 22460,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260628-0013",
+      "userId": "u1",
+      "createdAt": "2026-06-28T12:27:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 4580,
+      "shippingFee": 0,
+      "total": 4580,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20260614-0014",
+      "userId": "u1",
+      "createdAt": "2026-06-14T11:48:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "WC-005",
+          "name": "網路攝影機",
+          "unitPrice": 2490,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 2490,
+      "shippingFee": 0,
+      "total": 2490,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20260702-0015",
+      "userId": "u1",
+      "createdAt": "2026-07-02T13:06:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "DK-006",
+          "name": "筆電支架",
+          "unitPrice": 890,
+          "quantity": 1
+        },
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        },
+        {
+          "sku": "HB-008",
+          "name": "USB-C 集線器",
+          "unitPrice": 1490,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 6960,
+      "shippingFee": 0,
+      "total": 6960,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20260703-0016",
+      "userId": "u1",
+      "createdAt": "2026-07-03T19:27:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "LP-009",
+          "name": "桌上型檯燈",
+          "unitPrice": 1290,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 1290,
+      "shippingFee": 0,
+      "total": 1290,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260806-0017",
+      "userId": "u1",
+      "createdAt": "2026-08-06T15:59:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "CB-007",
+          "name": "USB-C 傳輸線",
+          "unitPrice": 390,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 390,
+      "shippingFee": 80,
+      "total": 470,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260806-0018",
+      "userId": "u1",
+      "createdAt": "2026-08-06T15:23:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 2
+        },
+        {
+          "sku": "HP-004",
+          "name": "降噪耳機",
+          "unitPrice": 6990,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 18560,
+      "shippingFee": 0,
+      "total": 18560,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260804-0019",
+      "userId": "u1",
+      "createdAt": "2026-08-04T20:43:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "DK-006",
+          "name": "筆電支架",
+          "unitPrice": 890,
+          "quantity": 2
+        },
+        {
+          "sku": "HP-004",
+          "name": "降噪耳機",
+          "unitPrice": 6990,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 8770,
+      "shippingFee": 0,
+      "total": 8770,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260912-0020",
+      "userId": "u1",
+      "createdAt": "2026-09-12T11:27:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "KB-001",
+          "name": "機械鍵盤",
+          "unitPrice": 3200,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 6400,
+      "shippingFee": 0,
+      "total": 6400,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20260912-0021",
+      "userId": "u1",
+      "createdAt": "2026-09-12T18:35:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        },
+        {
+          "sku": "MS-002",
+          "name": "人體工學滑鼠",
+          "unitPrice": 1800,
+          "quantity": 2
+        },
+        {
+          "sku": "LP-009",
+          "name": "桌上型檯燈",
+          "unitPrice": 1290,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 19080,
+      "shippingFee": 0,
+      "total": 19080,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "台中市西屯區台灣大道三段 99 號"
+      }
+    },
+    {
+      "id": "ORD-20261014-0022",
+      "userId": "u1",
+      "createdAt": "2026-10-14T11:47:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 25800,
+      "shippingFee": 0,
+      "total": 25800,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20261010-0023",
+      "userId": "u1",
+      "createdAt": "2026-10-10T19:15:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "MS-002",
+          "name": "人體工學滑鼠",
+          "unitPrice": 1800,
+          "quantity": 2
+        },
+        {
+          "sku": "LP-009",
+          "name": "桌上型檯燈",
+          "unitPrice": 1290,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 4890,
+      "shippingFee": 0,
+      "total": 4890,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20261102-0024",
+      "userId": "u1",
+      "createdAt": "2026-11-02T20:18:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        },
+        {
+          "sku": "MP-011",
+          "name": "滑鼠墊",
+          "unitPrice": 290,
+          "quantity": 1
+        },
+        {
+          "sku": "HP-004",
+          "name": "降噪耳機",
+          "unitPrice": 6990,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 20180,
+      "shippingFee": 0,
+      "total": 20180,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20261110-0025",
+      "userId": "u1",
+      "createdAt": "2026-11-10T13:41:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "SP-012",
+          "name": "藍牙喇叭",
+          "unitPrice": 2290,
+          "quantity": 1
+        },
+        {
+          "sku": "MP-011",
+          "name": "滑鼠墊",
+          "unitPrice": 290,
+          "quantity": 1
+        },
+        {
+          "sku": "DK-006",
+          "name": "筆電支架",
+          "unitPrice": 890,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 3470,
+      "shippingFee": 0,
+      "total": 3470,
+      "recipient": {
+        "name": "Alice",
+        "phone": "0912345678",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260124-0001A",
+      "userId": "u2",
+      "createdAt": "2026-01-24T11:13:00+08:00",
+      "status": "pending",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        },
+        {
+          "sku": "MS-002",
+          "name": "人體工學滑鼠",
+          "unitPrice": 1800,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 16500,
+      "shippingFee": 0,
+      "total": 16500,
+      "recipient": {
+        "name": "Admin",
+        "phone": "0987654321",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260321-0002A",
+      "userId": "u2",
+      "createdAt": "2026-03-21T20:36:00+08:00",
+      "status": "paid",
+      "items": [
+        {
+          "sku": "CH-010",
+          "name": "辦公椅",
+          "unitPrice": 8900,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 17800,
+      "shippingFee": 0,
+      "total": 17800,
+      "recipient": {
+        "name": "Admin",
+        "phone": "0987654321",
+        "address": "台北市信義區市府路 1 號"
+      }
+    },
+    {
+      "id": "ORD-20260520-0003A",
+      "userId": "u2",
+      "createdAt": "2026-05-20T17:55:00+08:00",
+      "status": "shipped",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        },
+        {
+          "sku": "MS-002",
+          "name": "人體工學滑鼠",
+          "unitPrice": 1800,
+          "quantity": 2
+        }
+      ],
+      "subtotal": 16500,
+      "shippingFee": 0,
+      "total": 16500,
+      "recipient": {
+        "name": "Admin",
+        "phone": "0987654321",
+        "address": "高雄市前鎮區成功二路 39 號"
+      }
+    },
+    {
+      "id": "ORD-20260711-0004A",
+      "userId": "u2",
+      "createdAt": "2026-07-11T13:00:00+08:00",
+      "status": "completed",
+      "items": [
+        {
+          "sku": "WC-005",
+          "name": "網路攝影機",
+          "unitPrice": 2490,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 2490,
+      "shippingFee": 0,
+      "total": 2490,
+      "recipient": {
+        "name": "Admin",
+        "phone": "0987654321",
+        "address": "新北市板橋區縣民大道二段 7 號"
+      }
+    },
+    {
+      "id": "ORD-20260906-0005A",
+      "userId": "u2",
+      "createdAt": "2026-09-06T14:55:00+08:00",
+      "status": "cancelled",
+      "items": [
+        {
+          "sku": "MN-003",
+          "name": "4K 螢幕",
+          "unitPrice": 12900,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 12900,
+      "shippingFee": 0,
+      "total": 12900,
+      "recipient": {
+        "name": "Admin",
+        "phone": "0987654321",
+        "address": "台北市信義區市府路 1 號"
+      }
+    }
+  ]
+}

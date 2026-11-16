@@ -1518,3 +1518,410 @@ export function GlobalNav(props: { items: readonly MenuItem[]; source: MenuSourc
 - 未登入點商品：`GET /shop/1 307` → `GET /login?callbackUrl=%2Fshop%2F1 200`，**沒有 RSC 請求**，A 的 log 從重建 B 之後 0 筆 error。
 - 已登入點商品：soft nav（`performance.timeOrigin` 不變）。
 - 瀏覽器驗收 13/13、soft／hard 3/3 仍然通過。
+
+---
+
+## 13. Phase 4：C 的元件以 Web Component 嵌入 A（2026-11-16 定案）
+
+> Phase 1～3（§1～§12）已完成並通過驗收。本節建立在它們之上；與前面章節衝突時，**以本節為準**。
+> 實作 session 只需要讀 §1～§4（背景與規則）、§7、§11.5、§12.7（原有規格）與本節。
+
+### 13.1 目標與需求（使用者定案）
+
+1. C 的元件**不需要改寫**就能放進 A 的頁面：同一份元件，C 自己的頁面在用，A 透過 Web Component 嵌入。
+2. 三種情境：
+   - **表格類**：訂單列表，連篩選條件（criteria）都是 C 的元件。
+   - **表單類**：登入後的個人資訊，可以檢視也可以編輯，用 react-hook-form。
+   - **檢視類**：訂單詳細。
+3. 元件**自己呼叫 API**，不需要 A 傳資料進來；A 只傳必要的參數（例如訂單編號）。
+4. C 單獨重新部署後，A 不用動就能拿到新版 widget。
+5. 資料來自獨立的後端服務 `member-api`（模擬真正的後端），C 的 API 只負責驗證登入與轉呼叫。
+
+### 13.2 架構
+
+```
+瀏覽器
+  ├─ A 的頁面：/、/account、/account/orders/[id]
+  │    └─ <member-orders> 等 widget ← /blog-static/widget/member-widgets.js（C 提供，A 既有規則轉發）
+  │         └─ fetch /member/api/... ──┐
+  └─ C 的頁面：/member/orders、/member/orders/[id]、/member/profile
+       └─ 同一份元件 ── fetch /member/api/... ──┤
+                                             ▼
+A rewrites：/member、/member/:path+ → C（本節新增）
+C 自己的 rewrite：/member/api/:path* → /api/member/:path*（Pages Router 的 API 只能放在 pages/api）
+C 的 API：readSession() 確認是誰 → 帶 X-User-Id 呼叫 member-api
+                                             ▼
+member-api（Node 20 + node:http，port 4100，只在內網）：種子 JSON 載入、資料存在記憶體
+```
+
+- C 同時負責 `/blog` 與 `/member` 兩個前綴，`assetPrefix` 仍然是 `/blog-static`（一個 zone 只能有一個）。widget 的 JS 放在 `public/blog-static/widget/`，A 既有的 `/blog-static/:path+` 規則已經涵蓋。
+- 本節示範 tech design §4.2 的「新增前綴」：A 要加 rewrite、共用的前綴表要加、A 要重新 build；B 不需要部署（B 的 `zones.ts` 同步更新只是為了 `check:shared`）。
+
+### 13.3 合約
+
+**資料型別**（C 的 `src/member/types.ts` 與 member-api 一致）
+
+```ts
+type OrderStatus = 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
+// 顯示文字：待付款、已付款、已出貨、已完成、已取消
+
+interface OrderSummary {
+  id: string;            // 'ORD-20260115-0001'
+  createdAt: string;     // ISO 8601，+08:00，例如 '2026-01-15T14:30:00+08:00'
+  status: OrderStatus;
+  total: number;         // 新台幣整數
+  itemCount: number;     // 件數合計
+  firstItemName: string; // 第一個品項名稱（列表顯示用）
+}
+interface OrderItem { sku: string; name: string; unitPrice: number; quantity: number }
+interface OrderDetail extends OrderSummary {
+  items: OrderItem[];
+  subtotal: number;
+  shippingFee: number;   // total = subtotal + shippingFee
+  recipient: { name: string; phone: string; address: string };
+}
+interface Profile {
+  name: string;          // 必填，1～50 字
+  email: string;         // email 格式；不可與其他使用者重複（只有後端能檢查）
+  phone: string;         // /^09\d{8}$/
+  address: string;       // 0～200 字
+  birthday: string | null; // 'YYYY-MM-DD'，不可晚於今天（Asia/Taipei）
+  newsletter: boolean;
+  updatedAt: string;     // ISO 8601，後端寫入；PUT 時忽略前端傳來的值
+}
+interface OrderPage { items: OrderSummary[]; total: number; page: number; pageSize: number }
+interface ValidationError { error: 'validation'; fieldErrors: Partial<Record<keyof Profile, string[]>> }
+```
+
+**訂單查詢參數**（C 的 API 與 member-api 相同）
+
+| 參數 | 規則 | 預設 |
+|---|---|---|
+| `status` | 空字串或 `OrderStatus` 之一 | 空（全部） |
+| `from`、`to` | `YYYY-MM-DD`，比對 `createdAt` 的日期部分，含頭尾 | 空 |
+| `q` | 比對訂單編號或任何品項名稱，不分大小寫，部分符合即可 | 空 |
+| `sort` | `createdAt`、`total`、`status` | `createdAt` |
+| `order` | `asc`、`desc` | `desc` |
+| `page` | 整數 ≥ 1 | `1` |
+| `pageSize` | 整數 1～50 | `10` |
+
+參數不合法 → `400 { error: 'validation', fieldErrors }`（欄位名稱用參數名）。
+
+**C 的 API**（對外網址；實際檔案在 `pages/api/member/`）
+
+| 方法與路徑 | 回應 |
+|---|---|
+| `GET /member/api/orders?…` | `200 OrderPage` |
+| `GET /member/api/orders/:id` | `200 OrderDetail`；不存在或不是自己的 → `404 { error: 'not_found' }` |
+| `GET /member/api/profile` | `200 Profile` |
+| `PUT /member/api/profile` | body 為 `Profile` 去掉 `updatedAt`。先用 zod 驗證，失敗 → `400 ValidationError`；後端回 400 原樣轉回；成功 → `200 Profile` |
+| 共通 | 未登入 → `401 { error: 'unauthorized' }`；member-api 連不上或逾時（3 秒）→ `502 { error: 'upstream' }`；所有回應 `Cache-Control: no-store` |
+| `PUT` 的 Origin 檢查 | `Origin` header 必須在 `ALLOWED_ORIGINS` 清單內，缺少或不符 → `403 { error: 'forbidden_origin' }` |
+
+**member-api**（`member-api/`，規劃 session 建立）
+
+| 方法與路徑 | 說明 |
+|---|---|
+| `GET /orders?…` | 同上查詢規則，只回 `X-User-Id` 的訂單 |
+| `GET /orders/:id` | 只回自己的；否則 404 |
+| `GET /profile`、`PUT /profile` | `PUT` 驗證規則同 `Profile`；email 已被其他使用者使用 → `400 { error: 'validation', fieldErrors: { email: ['此 email 已被其他帳號使用'] } }` |
+| `GET /healthz` | `200 { ok: true }` |
+| 共通 | 沒有 `X-User-Id` → 401；不認得的 id → 404。資料啟動時從 `seed.json` 載入，`PUT` 只改記憶體，重啟即恢復 |
+
+種子資料：`u1`（alice）25 筆訂單、`u2`（admin）5 筆，日期分布在 2026-01～2026-11，五種狀態都有；admin 的 email 是 `admin@example.com`（用來測「email 重複」）。
+
+**Web Component 合約**（A 與 C 之間唯一的介面）
+
+| 項目 | 值 |
+|---|---|
+| script | `/blog-static/widget/member-widgets.js`，ES module（`<script type="module">`） |
+| `<member-orders>` | 沒有 attribute。使用者點選一列時發出 `order-select` 事件：`CustomEvent<{ id: string }>`，`bubbles: true`、`composed: true` |
+| `<member-profile>` | 沒有 attribute |
+| `<member-order-detail>` | attribute `order-id`（必填）；改變時重新抓資料 |
+| 未登入 | widget 內顯示「請先登入」與連結 `/login?callbackUrl=<encodeURIComponent(location.pathname + location.search)>` |
+| debug | `window.__memberWidgets = { mounted: number, version: string }`：每個 widget 掛載 +1、卸載 −1；`version` 是 build 時間（ISO），用來驗證「C 更新後 A 拿到新版」 |
+
+**環境變數**
+
+| 名稱 | 誰讀 | 本機 | Docker |
+|---|---|---|---|
+| `MEMBER_API_URL` | C | `http://localhost:4100` | `http://member-api:4100` |
+| `ALLOWED_ORIGINS` | C | `http://localhost:3000,http://localhost:3002` | `http://localhost:8080,http://localhost:8082` |
+| `PORT` | member-api | 不設（預設 `4100`） | 不設 |
+
+兩個 C 的變數寫進 `c/.env.example`（規劃 session 更新；已經跑過 setup 的電腦要手動補進 `c/.env.local`）。
+
+**套件版本**（只裝在 C，全部精確版本；2026-11-16 查得）
+
+| 套件 | 版本 | 用途 |
+|---|---|---|
+| `@tanstack/react-query` | 5.107.1 | 資料抓取（dependencies） |
+| `@tanstack/react-table` | 9.3.1 | 表格（dependencies）。**v9 的 API 與網路上常見的 v8 範例不同，以 `node_modules/@tanstack/react-table` 內的型別與文件為準** |
+| `react-hook-form` | 7.92.0 | 表單（dependencies） |
+| `zod` | 4.6.7 | schema（dependencies） |
+| `@hookform/resolvers` | 7.0.6 | react-hook-form 接 zod（dependencies） |
+| `vite` | 8.3.8 | widget 打包（devDependencies；需要 Node ≥ 20.19） |
+| `@vitejs/plugin-react` | 6.3.0 | 同上（devDependencies） |
+| `@tailwindcss/vite` | 4.3.5 | 同上（devDependencies），必須與 `tailwindcss` 同版 |
+
+### 13.4 規劃 session 負責（Step 0'''）
+
+- `member-api/` 整個專案：`package.json`（`start`、`dev`，沒有 dependencies）、`.nvmrc`、`server.mjs`、`seed.json`。寫法比照 `auth-api`（port 被占用時印出原因並 exit 1、每個請求一行 log）。
+- 共用檔 `src/shared/zones.ts`（A、B、C 同步）：`blog: ['/blog', '/member']`。
+- `vault/menu.seed.json` 加 `{ "label": "會員中心", "href": "/member/orders" }`。
+- 根目錄：
+  - `package.json`：`dev` 從 `A,B,C,AUTH` 改成 `A,B,C,AUTH,MEMBER,WIDGET`，多 `"npm --prefix member-api run dev"` 與 `"npm --prefix c run widget:watch"`；`start:all` 多 `member-api` 的 `start`；新增 `docker:stop:member`、`docker:start:member`。
+  - `.gitignore` 加 `c/public/blog-static/widget/`（build 產物）。
+  - `docker-compose.yml`：新增 `member-api`（同 `auth-api` 的寫法，`expose: 4100`，healthcheck `/healthz`）；`c` 加 `MEMBER_API_URL`、`ALLOWED_ORIGINS`，`depends_on: member-api (service_started)`。
+  - `docker-compose.debug.yml`：`member-api` 加 `4100:4100`。
+- `c/.env.example` 補上 `MEMBER_API_URL`、`ALLOWED_ORIGINS`；本機的 `c/.env.local` 同步補上。
+
+### 13.5 Session C 的變更（`c/`）
+
+**檔案結構**
+
+```
+c/src/member/                 ← 不得 import 任何 next/*（見下方 check:member）
+├── types.ts                  §13.3 的型別、狀態顯示文字
+├── schemas.ts                zod：orderQuerySchema、profileInputSchema（表單與 API 共用）
+├── api.ts                    fetch 函式（相對路徑 /member/api/...）與 TanStack Query hooks；
+│                             非 2xx 時 throw ApiError { status, body }
+├── QueryProvider.tsx         QueryClientProvider；可以傳入既有的 client
+├── LoginRequired.tsx         401 時顯示「請先登入」與登入連結（§13.3）
+└── components/
+    ├── OrdersTable.tsx       props: { onSelect(id: string): void }
+    ├── ProfileForm.tsx       props: 無
+    └── OrderDetail.tsx       props: { orderId: string }
+c/src/pages/api/member/orders/index.ts、orders/[id].ts、profile.ts
+c/src/lib/member-upstream.ts  C 的 API 共用：讀 session、Origin 檢查、呼叫 member-api、錯誤轉換（server-only）
+c/src/pages/member/orders/index.tsx、orders/[id].tsx、profile.tsx
+c/widget/
+├── vite.config.ts
+├── env.d.ts                  declare module '*.css?inline'、declare const __WIDGET_VERSION__: string
+├── widget.css
+├── define.tsx                共用的 Custom Element 外殼
+└── index.tsx                 註冊三個標籤
+c/scripts/check-member.mjs    src/member/** 出現 `from 'next` 或 `require('next` 就失敗
+```
+
+**元件**
+
+- 三個元件都要處理：載入中（骨架或「載入中…」）、錯誤（「資料暫時無法載入」加「重試」按鈕）、401（`LoginRequired`）。
+- **`OrdersTable`**：
+  - 篩選列：狀態下拉（含「全部」）、日期起訖（`<input type="date">`）、關鍵字。按「查詢」才套用；「清除」回到預設值並重新查詢。篩選列也用 react-hook-form 管理（與 `orderQuerySchema` 共用驗證，例如 `from` 不可晚於 `to`）。
+  - 表格：TanStack Table（`manualSorting`、`manualPagination`）。欄位：訂單編號、日期（`YYYY-MM-DD HH:mm`）、狀態（色塊標籤）、品項（`firstItemName` 加「等 N 件」）、金額（`NT$ 1,234`，靠右）。點「日期」「狀態」「金額」標題可以排序，再點一次換方向。
+  - 分頁：上一頁、下一頁、`第 X／Y 頁，共 Z 筆`。換篩選或排序時回到第 1 頁。
+  - 點一列（或在列上按 Enter）→ `onSelect(id)`。列要有 `role="button"`、`tabIndex={0}`。
+  - 查詢條件**不寫進網址**（元件不能碰 router）；狀態只存在元件內。
+- **`ProfileForm`**：
+  - 檢視模式：列出各欄位與「最後更新」時間，附「編輯」按鈕。
+  - 編輯模式：react-hook-form + `zodResolver(profileInputSchema)`，`mode: 'onBlur'`。錯誤訊息顯示在欄位下方。「儲存」送 `PUT`；server 回 400 時，對 `fieldErrors` 的每個欄位呼叫 `setError`；成功後更新 query cache、回到檢視模式，顯示「已儲存」（3 秒後消失）。「取消」放棄修改並回到檢視模式。儲存中按鈕 disabled。
+- **`OrderDetail`**：標題（訂單編號＋狀態標籤）、下單時間、明細表（品名、單價、數量、小計）、小計／運費／總計、收件資訊。404 → 「找不到這筆訂單」。
+
+**C 的頁面**（都要登入：`withZone({ requireAuth: true })`；頁面可以用 `next/*`）
+
+- `/member/orders`：`<QueryProvider><OrdersTable onSelect={(id) => router.push(`/member/orders/${id}`)} /></QueryProvider>`。
+- `/member/orders/[id]`：`<OrderDetail orderId={id} />`，加一個回列表的 `<Link>`。
+- `/member/profile`：`<ProfileForm />`。
+- 資料都在瀏覽器端抓（不做 SSR 預取），與 widget 的行為一致。
+
+**C 的 API**：照 §13.3。`member-upstream.ts` 用 `readSession(req.cookies[SESSION_COOKIE])` 取得使用者 id，呼叫 `${MEMBER_API_URL}` 時帶 `X-User-Id`。`PUT` 先跑 Origin 檢查，再用 `profileInputSchema` 驗證。
+
+**`next.config.ts`**：新增 `rewrites()`：`[{ source: '/member/api/:path*', destination: '/api/member/:path*' }]`。其他不變。
+
+**widget**
+
+- `vite.config.ts`：
+  - `plugins: [react(), tailwindcss()]`，`resolve.alias: { '@': <c/src> }`。
+  - `define: { 'process.env.NODE_ENV': '"production"' }`；`__WIDGET_VERSION__` **每次打包都要重新計算**（watch 模式下 config 只載入一次，寫在 `define` 會停在第一次的時間；2026-11-16 Gate 7 發現），例如用一個小 plugin 在 `renderChunk` 時把 `__WIDGET_VERSION__` 替換成當下時間。
+  - `build.minify: true`，**另外要加 `build.rolldownOptions: { output: { minify: true } }`**（2026-11-16 使用者同意壓縮；Session C 查證：Vite 8 在 lib + es 格式會把 minify 強制成只 mangle、保留空白，只寫 `build.minify: true` 輸出完全不變）。實測 494 KB → 379 KB，gzip 129 KB → 115 KB。
+  - 改 `vite.config.ts` 後要重啟 `widget:watch`：watch 模式只在啟動時載入 config。
+  - `build.lib`：entry `widget/index.tsx`，`formats: ['es']`，輸出檔名固定 `member-widgets.js`；`build.outDir: public/blog-static/widget`，`emptyOutDir: true`。React 打包進去（不設 external）。
+- `widget.css`：`@import "../src/styles/globals.css";`、`@source "../src/member";`，再加 `:host { all: initial; display: block; font-family: var(--font-sans); color: #0f172a; line-height: 1.5; }`。
+- `define.tsx`：`defineWidget(tag, render: (el) => ReactNode, observedAttributes)`：
+  1. `connectedCallback`：`attachShadow({ mode: 'open' })`，插入 `<style>`（`widget.css?inline` 的內容），建立掛載點，`createRoot`，包在共用 `QueryClient` 的 `QueryProvider` 裡 render；`__memberWidgets.mounted += 1`。
+  2. `attributeChangedCallback`：重新 render。
+  3. `disconnectedCallback`：`root.unmount()`；`mounted -= 1`。
+  4. 第一次定義任何 widget 時，從 CSS 字串抽出所有 `@property … { … }` 規則，插入 `document.head` 一次（`<style data-member-widgets-properties>`），讓 Tailwind 用到 `@property` 的 utility 在 Shadow DOM 內生效。
+  5. `customElements.get(tag)` 已存在就不重複定義。
+- `index.tsx`：
+  - `member-orders`：`<OrdersTable onSelect={(id) => el.dispatchEvent(new CustomEvent('order-select', { detail: { id }, bubbles: true, composed: true }))} />`
+  - `member-profile`：`<ProfileForm />`
+  - `member-order-detail`：`<OrderDetail orderId={el.getAttribute('order-id') ?? ''} />`，`observedAttributes: ['order-id']`
+  - 設定 `window.__memberWidgets.version = __WIDGET_VERSION__`。
+
+**`package.json` scripts**
+
+| script | 內容 |
+|---|---|
+| `widget:build` | `vite build -c widget/vite.config.ts` |
+| `widget:watch` | `vite build -c widget/vite.config.ts --watch` |
+| `build` | `npm run widget:build && next build` |
+| `check:member` | `node scripts/check-member.mjs` |
+
+**自我驗收**（先在根目錄 `npm run vault:up && npm run menu:pull`；另開終端機跑 `npm --prefix member-api run dev` 與 `npm --prefix auth-api run dev`）
+1. `npx tsc --noEmit`、`npm run check:member`、根目錄 `npm run check:shared` 都通過。
+2. `npm run build` 成功，`public/blog-static/widget/member-widgets.js` 存在；檔案裡沒有 `next-auth`、`jose`、`hkdf`、`readSession`、`MEMBER_API_URL`。
+3. `npm run dev`（C 單獨，3002），用 next-auth/jwt 的 `encode()` 搭配 `.env.local` 的 secret 簽 alice（`sub: 'u1'`）的 cookie：
+   - `curl localhost:3002/member/api/orders` 不帶 cookie → 401；帶 cookie → `total: 25`；`?status=cancelled&sort=total&order=asc` 結果正確；`?pageSize=99` → 400。
+   - `PUT /member/api/profile`：不帶 Origin → 403；`Origin: http://localhost:3002` 加上不合法的 email → 400 `fieldErrors.email`；email 用 `admin@example.com` → 400（後端的錯誤）；合法 → 200，再 `GET` 看到新值。
+   - 瀏覽器（或 playwright）開 `localhost:3002/member/orders`（帶 cookie）：篩選、排序、分頁可用；點一列在 C 內 soft nav 到詳細頁。
+4. 做一個只在本機用的測試頁（例如 `scratchpad/widget-test.html`，**不要放進 repo**），放上三個標籤，確認三個 widget 都能 render（未登入時顯示「請先登入」即可）。測試頁必須和 C **同源**載入 script（例如用一個小 proxy 把 `/blog-static/*`、`/member/*` 轉給 3002，模擬 A 的 rewrite）：module script 走 CORS，C 沒有回 `Access-Control-Allow-Origin`，從別的 origin 用絕對網址載入時標籤不會被定義（2026-11-16 Session C 實測）。要讓其他網域直接嵌入 widget，需要另外處理 CORS 與跨網域 cookie，不在本 Phase 範圍。
+
+### 13.6 Session A 的變更（`a/`）
+
+- `next.config.ts` 的 `afterFiles` 加上（放在 blog 規則旁邊）：`{ source: '/member', destination: `${BLOG_ZONE_URL}/member` }`、`{ source: '/member/:path+', destination: `${BLOG_ZONE_URL}/member/:path+` }`。
+- **`beforeFiles` 也要加** `{ source: '/_next/data/:buildId/member/:path+', destination: `${BLOG_ZONE_URL}/_next/data/:buildId/member/:path+` }`（2026-11-16 Gate 7 發現、PLAN 原本漏寫）：C 是 Pages Router，`/member/*` 頁面之間的 soft nav 會請求 `/_next/data/<buildId>/member/...json`，這個路徑不帶 `assetPrefix`（§2.1），少了這條會打到 A 回 404，C 內的切頁退化成整頁載入。`/member` 本身沒有頁面，不需要 `member.json` 那條。
+- `src/types/member-widgets.d.ts`：
+  ```ts
+  import type { DetailedHTMLProps, HTMLAttributes } from 'react';
+  type El<P = {}> = DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & P;
+  declare module 'react' {
+    namespace JSX {
+      interface IntrinsicElements {
+        'member-orders': El;
+        'member-profile': El;
+        'member-order-detail': El<{ 'order-id': string }>;
+      }
+    }
+  }
+  ```
+- `src/member-widgets/`（全部 `'use client'`）：
+  - `WidgetScript.tsx`：`<Script src="/blog-static/widget/member-widgets.js" type="module" strategy="afterInteractive" crossOrigin="anonymous" />`。`crossOrigin` 一定要加（2026-11-16 使用者同意）：`next/script` 會輸出 preload，不加時 preload 與 module script 的 credentials mode 不一致，Chrome 警告且下載兩次。
+  - `MemberOrders.tsx`：render `WidgetScript` 與 `<member-orders ref={ref} />`；`useEffect` 對 ref 加 `order-select` 監聽，收到後 `router.push(`/account/orders/${encodeURIComponent(e.detail.id)}`)`，清理時移除監聽。
+  - `MemberProfile.tsx`、`MemberOrderDetail.tsx`（prop `orderId`）。
+  - 每個外殼外層用 `min-h-*` 預留高度（訂單表約 520px、個人資訊約 360px、訂單詳細約 420px）。
+- 頁面：
+  - `/`：在「登入示範」之後新增「我的訂單（C 的 widget）」段落，放 `<MemberOrders />`，說明文字註明「這個區塊由 Zone C 提供」。「登入示範」的清單加 `<a href="/member/orders">/member/orders</a>`（C 自己的頁面，要登入）。
+  - `/account`：在原本的帳號資訊下方加「個人資訊（C 的 widget）」，放 `<MemberProfile />`。
+  - **`/account/orders/[id]`（新增）**：沒有 session → `redirect(loginUrl(`/account/orders/${id}`))`；有 → 標題「訂單詳細」、`<MemberOrderDetail orderId={id} />`、`<Link href="/">← 回首頁</Link>`。
+- 其他不變。A 的頁面不得 import C 的任何程式碼，只透過 §13.3 的 Web Component 合約溝通。
+
+**自我驗收**
+1. `npx tsc --noEmit` 通過；根目錄 `npm run check:shared` 通過。
+2. 啟動 A（以及 auth-api）：`curl -i localhost:3000/account/orders/ORD-x` 未登入 → 307 到 `/login?callbackUrl=%2Faccount%2Forders%2FORD-x`；`npm run build` 成功，`.next/routes-manifest.json` 的 `afterFiles` 有 `/member` 與 `/member/:path+`（build log 只印 zone origin，不印路徑；2026-11-16 依 Session A 回報修正）。
+3. C 還沒完成時，widget 的 script 會失敗（C 在跑但還沒打包 → 404；C 沒啟動 → A 的 proxy 回 500）、標籤不會 render，這是預期的；外殼預留的高度要在。C 完成後（或規劃 session 通知後），用根目錄 `npm run dev` 確認：首頁、`/account`、`/account/orders/<id>` 都有 widget；在首頁點一列會 soft nav 到詳細頁。
+
+### 13.7 整合驗收
+
+**Gate 7：本機 dev**（`npm run vault:set -- vault/menu.seed.json && npm run menu:pull && npm run dev`，經由 <http://localhost:3000>）
+
+| # | 操作 | 預期 |
+|---|---|---|
+| G7-1 | `curl` member-api | 沒有 `X-User-Id` → 401；`u1` 的 `total` 25、`u2` 的 5；篩選、排序、分頁正確；`u1` 取 `u2` 的訂單 → 404 |
+| G7-2 | `curl` C 的 API（經由 3000） | 同 §13.5 自我驗收 3；另外 `Origin: https://evil.com` → 403 |
+| G7-3 | C 的頁面：未登入開 `/member/orders`、`/member/profile` | 307 到 `/login`；登入後可用，點一列 soft nav 到 C 的詳細頁 |
+| G7-4 | 未登入開 A 的 `/` | 訂單 widget 顯示「請先登入」，連結是 `/login?callbackUrl=%2F`；點下去登入 alice → 回到 `/`，表格顯示 alice 的訂單，共 25 筆 |
+| G7-5 | widget 的篩選條件 | 狀態、日期起訖、關鍵字、排序、分頁都正確，送出的 query 參數正確；`from` 晚於 `to` 時顯示錯誤且不送請求 |
+| G7-6 | 在 A 首頁點一列 | A soft nav 到 `/account/orders/<id>`（document 沒有重新載入），詳細 widget 顯示該筆；`__memberWidgets.mounted` 在首頁是 1、到詳細頁仍是 1（首頁的 widget 卸載 −1、詳細頁的掛載 +1），沒有殘留；A 的 log 沒有 error |
+| G7-7 | A 的 `/account` 編輯個人資訊 | email、手機格式錯誤時前端顯示錯誤，**沒有送出請求**；email 用 `admin@example.com` → 後端錯誤顯示在 email 欄位下方；合法修改 → 「已儲存」，重新整理後是新值；C 的 `/member/profile` 也是新值 |
+| G7-8 | 樣式 | 載入 widget 前後，A 導覽列與 `<main>` 的 computed style（font-family、color、margin）相同；widget 內的表格標題、按鈕與 C 的 `/member/orders` 上同一元素的 computed style（color、background-color、padding、font-size）相同；至少一個用到 `@property` 的 utility（例如 `shadow-*`）的 `box-shadow` 不是 `none` |
+| G7-9 | 只改 C 的元件文字（例如「查詢」→「搜尋」），等 `WIDGET` 重新打包 | A 的頁面重新整理就看到新文字，`__memberWidgets.version` 改變；A 沒有重新啟動。驗完改回 |
+| G7-10 | `curl -I localhost:3000/blog-static/widget/member-widgets.js`；瀏覽器 console 是否出現 preload 的 credentials mode 不一致警告（Session A 發現 `next/script` 會輸出不帶 `crossorigin` 的 preload，而 module script 走 CORS 模式） | 200、`x-zone: blog`；記錄 `Cache-Control` 的實際值，確認瀏覽器會重新驗證（`max-age=0` 或 `no-cache`） |
+| G7-11 | 停掉 member-api | 三個 widget 都顯示「資料暫時無法載入」與「重試」；A 自己的頁面內容正常；重新啟動後按「重試」恢復 |
+| G7-12 | 迴歸 | Gate 5 的瀏覽器測試 13/13、curl 迴歸、soft／hard 測試都通過；導覽列的「會員中心」在 A、B 是 hard，在 C 是 soft |
+
+**Gate 8：Docker**（`npm run docker:down && npm run docker:up:debug`，經由 <http://localhost:8080>）
+
+| # | 操作 | 預期 |
+|---|---|---|
+| G8-1 | `docker compose ps -a` | `member-api` healthy；其他同 G6-1 |
+| G8-2 | G7-1～G7-8、G7-10、G7-11 在 8080 重跑 | 全部通過（member-api 的停止用 `npm run docker:stop:member`） |
+| G8-3 | 只改 C 的元件文字後 `docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d --build --no-deps c` | A 的容器沒有重建或重啟（`StartedAt` 不變），A 的頁面重新整理就看到新文字。驗完改回並再重建 C |
+| G8-4 | Gate 6 的項目 | 仍然通過（迴歸） |
+
+### 13.8 建置順序
+
+| 步驟 | 誰 | 內容 |
+|---|---|---|
+| Step 0''' | 規劃 session | §13.4 全部，並自測 member-api（G7-1） |
+| Step 1''' | Session A、Session C 平行 | §13.5、§13.6。A 可以只照 §13.3 的 Web Component 合約開發，不必等 C |
+| Step 2''' | 規劃 session | Gate 7、Gate 8 |
+
+B 這次不用修改（`zones.ts` 由規劃 session 同步）。§3 的分工規則全部沿用（只寫自己的資料夾、不改 `src/shared/`、不 commit）。
+
+### 13.9 不在範圍內（Phase 4）
+
+- widget 的 SSR（內容要等 JS 執行完才出現）。
+- C 的 member 頁面做 SSR 預取。
+- 查詢條件寫進網址（元件不碰 router）。
+- 管理員看全部使用者的資料。
+- C 與 member-api 之間的服務間驗證（只靠內網隔離，與 auth-api 相同）。
+- 個人資訊寫回檔案或資料庫（只存在 member-api 的記憶體）。
+- widget 的 loader 加 hash 檔名的拆分（目前是單一固定檔名的檔案，靠重新驗證取得新版）。
+
+### 13.10 驗收紀錄（2026-11-16，規劃 session 以 curl + headless Chrome 實測）
+
+**實作中修正的 PLAN 錯誤與調整**
+- **A 漏了 `/_next/data/:buildId/member/:path+` 的 rewrite**（Gate 7 發現）：C 是 Pages Router，`/member/*` 之間的 soft nav 會打 `_next/data`，經由 A 回 404，切頁退化成整頁載入。已補進 §13.6，Session A 修正後通過。**新增一個 Pages Router zone 的前綴時，除了頁面規則，還要補 `_next/data` 規則。**
+- `next/script` 的 preload 與 module script 的 credentials mode 不一致（Session A 發現），Chrome 警告且下載兩次 → 加 `crossOrigin="anonymous"`，修正後警告 0 筆、只下載 1 次。
+- `__WIDGET_VERSION__` 在 watch 模式下不會更新 → 改成 `renderChunk` 時替換。
+- Vite 8 lib + es 格式只寫 `build.minify: true` 不會壓縮空白 → 加 `rolldownOptions.output.minify`；494 KB → 379 KB（gzip 129 KB → 115 KB）。
+- 測試頁從別的 origin 用絕對網址載入 module script 時標籤不會被定義（CORS），已更新 §13.5 自我驗收 4 的寫法。
+- build log 只印 zone origin，A 的 rewrites 改用 `routes-manifest.json` 確認。
+
+**Gate 7（本機 dev）全部通過**
+
+| # | 結果 |
+|---|---|
+| G7-1 | member-api：無 header 401；u1 25 筆、u2 5 筆；篩選、排序、分頁正確；u1 取 u2 的訂單 404 |
+| G7-2 | C 的 API（經由 3000）：未登入 401；`total` 25；`cancelled` + 金額升冪 5 筆正確；`pageSize=99` 400；別人的訂單 404；PUT 無 Origin 403、`https://evil.com` 403、email 格式錯誤 400、email 重複 400（後端訊息原樣轉回）、合法 200 |
+| G7-3 | 未登入 `/member/*` 307 到 `/login`；C 列表點一列是 soft nav（補上 `_next/data` 規則後） |
+| G7-4 | 未登入時 widget 顯示「請先登入」，連結 `/login?callbackUrl=%2F`；登入後回 `/`，顯示共 25 筆 |
+| G7-5 | 狀態、排序（desc → asc 且資料順序正確）、日期起訖填反顯示錯誤且不送請求、日期區間、關鍵字（「螢幕」7 筆）、分頁都正確 |
+| G7-6 | 在 A 首頁點一列 → `/account/orders/<id>`，`performance.timeOrigin` 不變、0 個 document 請求；`mounted` 1 → 1 |
+| G7-7 | 前端驗證失敗時沒有送出 PUT；後端的 email 重複錯誤顯示在 email 欄位；儲存後重新整理與 C 的 `/member/profile` 都是新值（驗完改回） |
+| G7-8 | A 的 nav、main、body 在有無 widget 時 computed style 相同；widget 與 C 頁面的按鈕、表頭 computed style 完全相同；`.shadow-sm` 的 `box-shadow` 有值 |
+| G7-9 | 只改 C 的元件文字：A 的 process（PID）不變，重新整理即看到新文字，`version` 從 `15:01:13` 變 `15:01:40`（驗完改回） |
+| G7-10 | `member-widgets.js` 200、`x-zone: blog`、`Cache-Control: public, max-age=0`；console 的 preload 警告修正後為 0；一次頁面載入只下載 1 次 |
+| G7-11 | member-api 停止：三個 widget 都顯示「資料暫時無法載入」與「重試」，A 的頁面標題與內容正常 |
+| G7-12 | Gate 5 瀏覽器 13/13、curl 迴歸 17/17、soft／hard 3/3；「會員中心」在 `/`、`/shop` 是 hard，在 `/member/orders` 是 soft |
+
+**Gate 8（Docker）全部通過**
+
+| # | 結果 |
+|---|---|
+| G8-1 | member-api、auth-api、vault healthy；vault-sync exited 0；a、b、c running |
+| G8-2 | G7-1～G7-8、G7-10、G7-11 在 8080 全部通過（瀏覽器 7/7、curl 全部符合；member-api 用 `docker:stop:member` 停止） |
+| G8-3 | 只重建 C：A 容器的 `StartedAt` 不變，A 頁面重新整理即看到新文字，`version` 從 `15:02:33` 變 `15:03:39`。改回後重建，因為原始碼相同，Docker 用了 build 快取，`version` 回到 `15:02:33`（預期行為） |
+| G8-4 | Gate 6 迴歸：瀏覽器 13/13、curl 17/17、soft／hard 3/3、缺 `NEXTAUTH_SECRET` 時 a、b、c 都 exit 1。**未重跑**：G6-5（session 60 秒過期）與 G6-4（auth-api 停止），本 Phase 沒有改到這兩部分 |
+
+---
+
+## 14. Phase 4.1：demo 用的「顯示區塊來源」開關（2026-11-16 定案）
+
+目的：tech review 或 demo 時，讓非前端的人一眼看出哪個區塊來自哪個 zone。平常關閉，頁面外觀不變。
+
+**行為**
+- 導覽列右側多一個按鈕「區塊來源：關／開」。網址帶 `?zones=1` 會打開、`?zones=0` 會關閉。
+- 狀態存在 `localStorage`（key `zone-debug`）。三個 zone 同一個網域，所以跨 zone 整頁跳轉後狀態仍然保留。讀寫都包 try/catch，失敗就當成關閉。
+- 打開時：
+  - **整頁外框**：用目前 zone 的主色（A 藍 `#2563eb`、B 綠 `#16a34a`、C 橘 `#ea580c`）畫一圈固定在視窗邊緣的框；右下角固定一個標籤「此頁由 {ZONE.name} 提供」。
+  - **widget 外框**：A 的 widget 外殼（`[data-widget-shell]`）畫 C 的橘色虛線框，左上角標籤「來自 Zone C · Blog · 版本 {YYYY-MM-DD HH:mm:ss}」（版本取自 `window.__memberWidgets.version`，以 Asia/Taipei 顯示）。
+- 框線與標籤都 `pointer-events: none`，不影響操作。
+
+**分工**
+- 規劃 session：共用檔 `src/shared/ZoneDebugToggle.tsx`（`'use client'`；按鈕、`html[data-zone-debug]` 屬性、整頁外框、通用的 `[data-widget-shell]` 樣式），`GlobalNav.tsx` 放入按鈕。三個 zone 逐字相同。
+- Session A：widget 外殼加上 `data-widget-label` 與 `--widget-zone-color`，等 `customElements.whenDefined(tag)` 之後讀 `__memberWidgets.version` 更新標籤。
+- B、C：不用改（只同步共用檔）。C 的元件與 widget 完全不動。
+
+**驗收**
+1. 預設關閉：畫面與修改前相同（沒有框線、沒有標籤）。
+2. 在 A 首頁打開 → 藍色整頁框 + 訂單 widget 的橘色虛線框與版本標籤；整頁跳到 `/shop`（綠框）、`/member/orders`（橘框）後仍是打開的；`?zones=0` 關閉。
+3. 打開時表格、表單仍可正常操作（框線不擋點擊）。
+4. 只重新部署 C 後重新整理 A，widget 標籤的版本時間改變。
+
+### 14.1 A 自己的瀏覽器端 API 呼叫（2026-11-16 追加）
+
+目的：demo 時在 Network 面板並排看到「A 回應的 API（沒有 `x-zone`）」與「C 回應的 API（`x-zone: blog`）」。A 原本除了登入相關的 API，沒有任何瀏覽器會呼叫的 API（`/api/menu` 只有 B、C 在 server 端呼叫）。
+
+- A 首頁在「我的訂單（C 的 widget）」段落**上方**新增「A 自己的資料」段落，放 client component `AMenuPreview`（`a/src/components/AMenuPreview.tsx`）：
+  - mount 後在瀏覽器端 `fetch('/api/menu', { cache: 'no-store' })`，列出選單項目（label → href），註明「資料來自 A 的 `/api/menu`（瀏覽器端呼叫）」。
+  - 載入中顯示「載入中…」，失敗顯示「選單資料暫時無法載入」與「重試」。
+  - 外層 div 使用與 widget 外殼相同的標示屬性：`data-widget-shell="a-menu-preview"`、`data-widget-label="Zone A · Main · /api/menu"`、`style={{ '--widget-zone-color': '#2563eb' }}`，「區塊來源」打開時顯示藍色虛線框。
+- 不新增任何 API，不改 `/api/menu`。
+
+**驗收**
+1. 首頁的 Network（Fetch/XHR）有 `GET /api/menu`（沒有 `x-zone`），以及 `GET /member/api/orders…`（`x-zone: blog`）。
+2. 畫面列出的選單與導覽列一致（5 項，含「會員中心」）。
+3. 「區塊來源」打開時，這個區塊是藍色虛線框，標籤「Zone A · Main · /api/menu」；下方 C 的 widget 仍是橘色框。

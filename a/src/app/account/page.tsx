@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { loginUrl } from '@/shared/session';
 import { getCurrentUser } from '@/session-server';
+import { MemberProfile } from '@/member-widgets/MemberProfile';
 
 export default async function AccountPage() {
   const user = await getCurrentUser();
@@ -19,6 +20,10 @@ export default async function AccountPage() {
         <dt className="text-slate-500">到期時間</dt>
         <dd>{new Date(user.expiresAt * 1000).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</dd>
       </dl>
+
+      <h2 className="mb-2 mt-8 text-xl font-semibold">個人資訊（C 的 widget）</h2>
+      <p className="mb-3 text-sm text-slate-600">這個區塊由 Zone C 提供（&lt;member-profile&gt;）。</p>
+      <MemberProfile />
     </main>
   );
 }

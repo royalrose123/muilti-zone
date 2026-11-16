@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
         // C（Pages Router）的 getStaticProps 資料請求不吃 assetPrefix，見 PLAN §2.1
         { source: '/_next/data/:buildId/blog.json', destination: `${BLOG_ZONE_URL}/_next/data/:buildId/blog.json` },
         { source: '/_next/data/:buildId/blog/:path+', destination: `${BLOG_ZONE_URL}/_next/data/:buildId/blog/:path+` },
+        // C 的 /member/* 也是 Pages Router，soft nav 的資料請求同樣不吃 assetPrefix（PLAN §13.6）
+        { source: '/_next/data/:buildId/member/:path+', destination: `${BLOG_ZONE_URL}/_next/data/:buildId/member/:path+` },
         // B、C 的 next/image 請求不吃 assetPrefix，依 url query 分流給原 zone 的最佳化器，見 PLAN §2.2
         {
           source: '/_next/image',
@@ -46,6 +48,9 @@ const nextConfig: NextConfig = {
         { source: '/shop-static/:path+', destination: `${SHOP_ZONE_URL}/shop-static/:path+` },
         { source: '/blog', destination: `${BLOG_ZONE_URL}/blog` },
         { source: '/blog/:path+', destination: `${BLOG_ZONE_URL}/blog/:path+` },
+        // C 同時負責 /member（PLAN §13.2）；C 的 /member/api/* 也走這兩條
+        { source: '/member', destination: `${BLOG_ZONE_URL}/member` },
+        { source: '/member/:path+', destination: `${BLOG_ZONE_URL}/member/:path+` },
         { source: '/blog-static/:path+', destination: `${BLOG_ZONE_URL}/blog-static/:path+` },
       ],
       fallback: [],
