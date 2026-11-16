@@ -1,15 +1,14 @@
 // 新電腦一次準備好本地開發環境：npm run setup
-// 1. 檢查 Node 與 Docker  2. 安裝 root、a、b、c 的套件  3. .env.example → .env.local（已存在就跳過）
-// 4. 啟動 Vault 並把 menu 拉到 a/b/c 的 config/menu.json
+// 1. 檢查 Node（必要）與 Docker（只有 docker:up 需要）  2. 安裝 root、a、b、c 的套件
+// 3. .env.example → .env.local（已存在就跳過）  4. 確認選單檔 deploy/menu.json 存在且格式正確
 // 只用 Node 內建模組。跑完之後：npm run dev（本地）或 npm run docker:up（Docker）。
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ZONES = ['a', 'b', 'c'];
-const VAULT_HEALTH = 'http://localhost:8200/v1/sys/health';
 
 // Docker Desktop 的 CLI 不一定在 PATH（例如 /usr/local/bin 沒被載入）
 const env = {
@@ -37,9 +36,14 @@ if (major !== 20 || minor < 9) {
   fail(`需要 Node 20（.nvmrc 指定 20.20.2），目前是 ${process.version}。請先執行：nvm install && nvm use`);
 }
 console.log(`  Node ${process.version}`);
-if (!ok('docker', ['--version'])) fail('找不到 docker 指令。請先安裝 Docker Desktop：https://www.docker.com/products/docker-desktop/');
-if (!ok('docker', ['info'])) fail('Docker 沒有在執行。請先打開 Docker Desktop（macOS：open -a Docker），等它啟動完成再重跑。');
-console.log('  Docker 正在執行');
+// 本地開發不需要 Docker；只有 npm run docker:up 需要，所以只提醒、不中止
+if (!ok('docker', ['--version'])) {
+  console.warn('  ⚠ 找不到 docker 指令：本地開發不受影響；要用 npm run docker:up 時請先安裝 Docker Desktop');
+} else if (!ok('docker', ['info'])) {
+  console.warn('  ⚠ Docker 沒有在執行：本地開發不受影響；要用 npm run docker:up 時請先打開 Docker Desktop');
+} else {
+  console.log('  Docker 正在執行');
+}
 
 // 2. 安裝套件（依 lockfile，結果可重現）
 for (const dir of ['.', ...ZONES]) {
@@ -62,28 +66,15 @@ for (const zone of ZONES) {
   }
 }
 
-// 4. Vault + menu
-async function vaultUp() {
-  try {
-    return (await fetch(VAULT_HEALTH, { signal: AbortSignal.timeout(2000) })).ok;
-  } catch {
-    return false;
-  }
+// 4. 選單檔（正式環境是 ConfigMap；本地與 Docker 都讀 repo 裡的 deploy/menu.json）
+step('檢查選單檔 deploy/menu.json');
+try {
+  const items = JSON.parse(readFileSync(join(root, 'deploy/menu.json'), 'utf8'));
+  if (!Array.isArray(items) || items.length === 0) throw new Error('必須是非空陣列');
+  console.log(`  ${items.length} 項`);
+} catch (err) {
+  fail(`deploy/menu.json 無法使用：${err instanceof Error ? err.message : err}`);
 }
-step('啟動 Vault');
-if (await vaultUp()) {
-  console.log('  localhost:8200 已經有 Vault 在跑，直接使用');
-} else {
-  run('docker', ['compose', 'up', '-d', 'vault']);
-  let ready = false;
-  for (let i = 0; i < 60 && !ready; i++) {
-    ready = await vaultUp();
-    if (!ready) await new Promise((r) => setTimeout(r, 1000));
-  }
-  if (!ready) fail('Vault 60 秒內沒有就緒，請看 docker compose logs vault');
-}
-step('把 menu 拉到 a/b/c 的 config/menu.json');
-run('npm', ['run', 'menu:pull']);
 
 // 5. 提醒：本地 dev 需要的 port 是否已被占用（不影響 setup 結果）
 const { createServer } = await import('node:net');
@@ -108,4 +99,4 @@ console.log(`
   npm run dev          本地開發（A、B、C、auth-api）→ http://localhost:3000
   npm run docker:up    Docker（第一次要 build 幾分鐘）→ http://localhost:8080
   demo 帳號：alice / alice123、admin / admin123
-注意：Vault 是 dev 模式，容器重啟後資料會清空；之後本地開發前若 menu 不見，重跑 npm run vault:up && npm run menu:pull。`);
+改選單：編輯 deploy/menu.json，本地重啟 A；Docker 執行 npm run docker:redeploy:a。`);

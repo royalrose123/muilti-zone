@@ -1,8 +1,0 @@
-[
-  { "label": "Home", "href": "/" },
-  { "label": "About", "href": "/about" },
-  { "label": "Shop", "href": "/shop" },
-  { "label": "特價：4K 螢幕", "href": "/shop/3" },
-  { "label": "Blog", "href": "/blog" },
-  { "label": "Multi-Zones 介紹", "href": "/blog/hello-multi-zones" }
-]

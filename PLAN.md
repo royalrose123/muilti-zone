@@ -967,6 +967,8 @@ monorepo 下混用 React 18 與 19 的坑：npm hoist 會把其中一版放根�
 
 ## 11. Phase 2：menu 改由 Vault 管理（2026-11-14 定案）
 
+> **2026-11-16 更新：選單已不放在 Vault，改由 ConfigMap（demo 為 `deploy/menu.json`）提供，見 §15。** 本節的快取、備援、A 啟動時讀一次等設計仍然有效；Vault、`vault-sync`、`scripts/vault.mjs`、`menu:pull` 等內容已移除，僅保留作為紀錄。
+
 > Phase 1（§1～§8）已完成並通過驗收。本節是在 Phase 1 之上的變更；與前面章節衝突時，**以本節為準**。
 > 實作 session 只需要讀 §1～§4（背景與規則）、§7（原有規格）與本節。
 
@@ -1925,3 +1927,57 @@ B 這次不用修改（`zones.ts` 由規劃 session 同步）。§3 的分工規
 1. 首頁的 Network（Fetch/XHR）有 `GET /api/menu`（沒有 `x-zone`），以及 `GET /member/api/orders…`（`x-zone: blog`）。
 2. 畫面列出的選單與導覽列一致（5 項，含「會員中心」）。
 3. 「區塊來源」打開時，這個區塊是藍色虛線框，標籤「Zone A · Main · /api/menu」；下方 C 的 widget 仍是橘色框。
+
+---
+
+## 15. Phase 5：選單從 Vault 改為 ConfigMap（2026-11-16 定案）
+
+### 15.1 決策
+
+選單不是機密，不應放在 Vault。改放 **K8s ConfigMap，以檔案方式掛載**（使用者定案）。比較過的選項：放進 A 的程式碼（改選單要重新 build，違反「只重新部署」原則）、後端 API／CMS（適合非工程人員自己改，目前不需要）、物件儲存。
+
+選 ConfigMap 的理由：流程與原本的 secret volume 相同，程式只換讀取路徑；B、C 可以掛同一份當備援；改選單走 deploy repo 的 PR（有 review、歷史紀錄、可 revert）。
+
+### 15.2 變更內容
+
+| 項目 | 之前 | 之後 |
+|---|---|---|
+| 選單來源 | Vault KV `secret/multi-zone/menu` | repo 的 `deploy/menu.json`（模擬 deploy repo 裡的 ConfigMap 來源） |
+| A 的 `MENU_FILE` | 本機 `./config/menu.json`、Docker `/vault/secrets/menu.json` | 本機 `../deploy/menu.json`（程式預設值，也寫在 `a/.env.example`）、Docker `/etc/config/menu.json` |
+| B、C 的 `MENU_FALLBACK_FILE` | 本機 `./config/menu.json`、Docker `/vault/secrets/menu.json` | 本機 `../deploy/menu.json`（程式預設值，也寫在 `.env.example`）、Docker `/etc/config/menu.json` |
+| Docker 掛載方式 | `vault-sync` 寫入 `menu-secrets` volume | compose 的 `configs: menu: file: ./deploy/menu.json`，唯讀掛到 a、b、c 的 `/etc/config/menu.json` |
+| 改選單流程 | `vault:set` → `docker:sync` → `docker:redeploy:a` | 改 `deploy/menu.json` → `docker:redeploy:a`（本機：重啟 A） |
+| 移除 | | `vault`、`vault-sync` 服務、`menu-secrets` volume、`scripts/vault.mjs`、`vault/`、各 zone 的 `config/`、npm scripts `vault:up`、`vault:set`、`vault:get`、`menu:pull`、`docker:sync` |
+
+不變：A 啟動時讀一次並驗證（失敗 exit 1）、`/api/menu`、B／C 的 60 秒快取與兩層備援、`data-menu-source`。
+
+`setup.mjs`：不再啟動 Vault；改為檢查 `deploy/menu.json`；Docker 不在時只提醒（本地開發不需要 Docker）。已經跑過 setup 的電腦，要把 `.env.example` 新增的 `MENU_FILE`／`MENU_FALLBACK_FILE` 補進 `.env.local`（沒補也可以，程式預設值相同）。
+
+### 15.3 正式環境對應（Kustomize 範例，demo 不實作）
+
+```yaml
+# kustomization.yaml（A 的 deploy repo）
+configMapGenerator:
+  - name: site-menu
+    files:
+      - menu.json            # 改這個檔案 → ConfigMap 名稱的 hash 改變 → A 的 Deployment 自動 rollout
+# deployment.yaml（A；B、C 同樣掛載當備援）
+volumes:
+  - name: menu
+    configMap: { name: site-menu }
+containers:
+  - volumeMounts: [{ name: menu, mountPath: /etc/config, readOnly: true }]   # 不要用 subPath，否則檔案不會更新
+    env: [{ name: MENU_FILE, value: /etc/config/menu.json }]
+```
+
+### 15.4 驗收紀錄（2026-11-16）
+
+| 項目 | 結果 |
+|---|---|
+| 本地 | `npm run setup` 檢查 5 項；`npm run dev` 時 A log `[menu] loaded 5 items from ../deploy/menu.json`，`/`、`/shop`、`/blog` 為 `local`、`remote`、`remote`；只啟動 B 時為 `fallback-file`，選單 5 項 |
+| Docker 啟動 | A log `[menu] loaded 5 items from /etc/config/menu.json`；三頁 `local`／`remote`／`remote` |
+| 改檔案、未重新部署 | `/api/menu` 與三頁都還是舊選單 |
+| 只重新部署 A | A 立即顯示新項目；B、C 在 **+56 秒**跟上；B、C 容器沒有重啟 |
+| A 停止 | 8081／8082 仍有新選單（`remote`，快取）；再重啟 B、C → `fallback-file`，選單正確 |
+| `MENU_FILE=/nope` | A 容器 exit 1，`[menu] 啟動失敗：ENOENT` |
+| 迴歸（Docker） | Gate 7 瀏覽器 7/7、登入 13/13、curl 17/17、soft／hard 3/3、區塊來源 7/7 |

@@ -9,7 +9,7 @@ declare global {
 
 /** 啟動時呼叫一次：讀 MENU_FILE → 驗證 → 存進記憶體。失敗就 throw。 */
 export async function loadLocalMenu(): Promise<MenuItem[]> {
-  const file = process.env.MENU_FILE ?? './config/menu.json';
+  const file = process.env.MENU_FILE ?? '../deploy/menu.json';
   const items = parseMenu(JSON.parse(await readFile(file, 'utf8')));
   globalThis.__MENU__ = items;
   console.log(`[menu] loaded ${items.length} items from ${file}`);

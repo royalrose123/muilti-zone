@@ -32,39 +32,6 @@ services:
       timeout: 3s
       retries: 15
 
-  vault:
-    image: hashicorp/vault:2.2.2   # dev 模式：資料只存在記憶體
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-    cap_add:
-      - IPC_LOCK
-    ports:
-      - "8200:8200"   # demo 用：讓 host 能改 Vault（npm run vault:set）與開 UI
-    healthcheck:
-      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
-  # 模擬 Vault Secrets Operator：把 Vault 的 menu 同步到 secret volume（npm run docker:sync 可重跑）
-  vault-sync:
-    image: node:20.20.2-alpine
-    environment:
-      VAULT_ADDR: http://vault:8200
-      VAULT_TOKEN: dev-root-token
-    volumes:
-      - ./scripts:/scripts:ro
-      - ./vault:/seed:ro
-      - menu-secrets:/secrets
-    command:
-      - sh
-      - -c
-      - node /scripts/vault.mjs seed-if-empty /seed/menu.seed.json && node /scripts/vault.mjs write /secrets/menu.json
-    depends_on:
-      vault:
-        condition: service_healthy
-
   a:
     build:
       context: ./a
@@ -72,13 +39,14 @@ services:
         SHOP_ZONE_URL: http://b:3001
         BLOG_ZONE_URL: http://c:3002
     environment:
-      MENU_FILE: /vault/secrets/menu.json
+      MENU_FILE: /etc/config/menu.json   # 模擬 K8s 的 configMap volume（PLAN §15）
       NEXTAUTH_SECRET: *auth-secret
       NEXTAUTH_URL: http://localhost:8080
       AUTH_API_URL: http://auth-api:4000
       SESSION_MAX_AGE: ${SESSION_MAX_AGE:-28800}   # 驗收過期：SESSION_MAX_AGE=60 npm run docker:redeploy:a
-    volumes:
-      - menu-secrets:/vault/secrets:ro
+    configs:
+      - source: menu
+        target: /etc/config/menu.json
     ports:
       - "8080:3000"   # 只有 A 對外
     depends_on:
@@ -86,8 +54,6 @@ services:
         condition: service_started
       c:
         condition: service_started
-      vault-sync:
-        condition: service_completed_successfully
       auth-api:
         condition: service_started   # 不等 healthy：故意停掉 auth-api 時 A 仍要能啟動
 
@@ -96,34 +62,35 @@ services:
       context: ./b
     environment:
       MAIN_ZONE_URL: http://a:3000
-      MENU_FALLBACK_FILE: /vault/secrets/menu.json
+      MENU_FALLBACK_FILE: /etc/config/menu.json
       NEXTAUTH_SECRET: *auth-secret
-    volumes:
-      - menu-secrets:/vault/secrets:ro
+    configs:
+      - source: menu
+        target: /etc/config/menu.json
     expose:
       - "3001"        # 只在 compose 內網可見
-    depends_on:       # 刻意不 depends_on a：A 不通時要能靠備案啟動並服務
-      vault-sync:
-        condition: service_completed_successfully
+    # 刻意不 depends_on a：A 不通時要能靠備案（自己掛載的同一份 ConfigMap）啟動並服務
 
   c:
     build:
       context: ./c
     environment:
       MAIN_ZONE_URL: http://a:3000
-      MENU_FALLBACK_FILE: /vault/secrets/menu.json
+      MENU_FALLBACK_FILE: /etc/config/menu.json
       NEXTAUTH_SECRET: *auth-secret
       MEMBER_API_URL: http://member-api:4100
       ALLOWED_ORIGINS: http://localhost:8080,http://localhost:8082
-    volumes:
-      - menu-secrets:/vault/secrets:ro
+    configs:
+      - source: menu
+        target: /etc/config/menu.json
     expose:
       - "3002"
     depends_on:
-      vault-sync:
-        condition: service_completed_successfully
       member-api:
         condition: service_started   # 不等 healthy：member-api 停掉時 C 仍要能啟動（widget 顯示錯誤狀態）
 
-volumes:
-  menu-secrets: {}
+# 模擬 K8s ConfigMap：來源是 repo 裡的 deploy/menu.json，唯讀掛進 a、b、c（PLAN §15）。
+# 改檔案後要重新建立容器才會生效（npm run docker:redeploy:a），與「改設定要重新部署」的規則一致。
+configs:
+  menu:
+    file: ./deploy/menu.json

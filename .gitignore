@@ -3,6 +3,5 @@ node_modules/
 next-env.d.ts
 *.tsbuildinfo
 .DS_Store
-config/
 .env*.local
 c/public/blog-static/widget/

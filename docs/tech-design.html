@@ -198,7 +198,7 @@ dl.issue dd ul { margin: 0; }
   <tr><th>文件狀態</th><td>技術審查用（Draft）</td></tr>
   <tr><th>版本</th><td>2.0</td></tr>
   <tr><th>日期</th><td>2026-11-16</td></tr>
-  <tr><th>依據</th><td>本機 demo（三個 zone + Vault）在 dev、production、Docker Compose 的實測結果</td></tr>
+  <tr><th>依據</th><td>本機 demo（三個 zone）在 dev、production、Docker Compose 的實測結果</td></tr>
   <tr><th>實作</th><td><code>~/Desktop/projects/multi-zone</code>（細部規格與逐項驗收紀錄見 <code>PLAN.md</code>）</td></tr>
 </table>
 
@@ -354,7 +354,7 @@ function ZoneLink({ href, children }) {
   <thead><tr><th>變更</th><th>要重新部署</th><th>說明</th></tr></thead>
   <tbody>
     <tr><td>某個 zone 的頁面或程式</td><td>只有該 zone</td><td>Multi-Zones 的主要好處</td></tr>
-    <tr><td>選單內容（Vault）</td><td>只有 A</td><td>B、C 不用動，60 秒內跟上（§5）</td></tr>
+    <tr><td>選單內容（ConfigMap）</td><td>只有 A</td><td>B、C 不用動，60 秒內跟上（§5）。用 Kustomize 的 configMapGenerator 時，改內容會自動觸發 A 重新部署</td></tr>
     <tr><td>zone 的內部位址</td><td>A（<strong>重新 build</strong>）</td><td>rewrites 的目的地在 build 時寫進 <code>routes-manifest.json</code>，執行期改環境變數無效（已實測）。A 的 image 因此綁定環境，staging 與 production 要各自 build</td></tr>
     <tr><td>新增一個 zone 或改路徑前綴</td><td>A、新 zone</td><td>A 要加 rewrites，也要更新共用的前綴表，否則 A 會用 <code>&lt;Link&gt;</code> 連到新 zone（§6.1）。其他既有 zone 不必更新：它們把不認得的前綴當成 A 的路徑，本來就用整頁載入</td></tr>
     <tr><td>共用導覽列的樣式或行為</td><td>所有 zone</td><td>沒有一起部署的那段時間，各 zone 會顯示不同版本（§6.6）</td></tr>
@@ -364,13 +364,13 @@ function ZoneLink({ href, children }) {
 </div>
 
 <h3 id="deploy-config">4.3 設定在 build 時還是執行期生效</h3>
-<p>原則：<strong>能在執行期讀的，都不要寫進 build</strong>，這樣同一個 image 才能用在多個環境。唯一寫進 build 的是 zone 位址，原因是 rewrites 的機制如此。選單在執行期讀；build 時不需要 Vault，也不需要其他 zone 在跑（已實測：A 與 Vault 都停止時，B、C 照樣 build 成功）。</p>
+<p>原則：<strong>能在執行期讀的，都不要寫進 build</strong>，這樣同一個 image 才能用在多個環境。唯一寫進 build 的是 zone 位址，原因是 rewrites 的機制如此。選單在執行期讀；build 時不需要選單，也不需要其他 zone 在跑（已實測：A 停止時，B、C 照樣 build 成功）。</p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>設定</th><th>誰讀</th><th>生效時機</th></tr></thead>
   <tbody>
     <tr><td>zone 位址（<code>SHOP_ZONE_URL</code>、<code>BLOG_ZONE_URL</code>）</td><td>A</td><td>build</td></tr>
-    <tr><td>選單檔案（secret volume）</td><td>A；B、C 只在備援時讀</td><td>啟動時</td></tr>
+    <tr><td>選單檔案（ConfigMap 掛成檔案）</td><td>A；B、C 只在備援時讀</td><td>啟動時</td></tr>
     <tr><td>A 的內部位址（<code>MAIN_ZONE_URL</code>）</td><td>B、C</td><td>執行期</td></tr>
   </tbody>
 </table>
@@ -388,10 +388,10 @@ function ZoneLink({ href, children }) {
 <h2 id="menu">5. 選單管理</h2>
 <h3 id="menu-needs">5.1 需求</h3>
 <ol>
-  <li>選單唯一的來源是 Vault，正式環境透過 secret volume 掛成檔案；Vault 更新後要重新部署才生效（現行規則）。</li>
+  <li>選單只有一個來源；改了之後重新部署才生效（現行規則）。</li>
   <li><strong>改選單只部署一個專案</strong>，不能變成三個專案都要部署。</li>
   <li>B、C 向 A 取得失敗時，仍要顯示一份真的選單。</li>
-  <li>build 不依賴 A，也不依賴 Vault。</li>
+  <li>build 不依賴 A，也不需要選單。</li>
 </ol>
 
 <h3 id="menu-options">5.2 方案比較</h3>
@@ -401,9 +401,9 @@ function ZoneLink({ href, children }) {
   <thead><tr><th>方案</th><th>改選單要部署</th><th>A 不通時</th><th>結論</th></tr></thead>
   <tbody>
     <tr><td>每個 zone 程式碼裡各寫一份</td><td>全部</td><td>不受影響</td><td>不採用：一定會越改越不一致</td></tr>
-    <tr><td>每個 zone 啟動時各自讀 Vault</td><td>全部</td><td>不受影響</td><td>不採用：違反需求 2</td></tr>
+    <tr><td>每個 zone 啟動時各自讀同一份設定</td><td>全部</td><td>不受影響</td><td>不採用：違反需求 2</td></tr>
     <tr><td>共用 npm 套件</td><td>全部（還要先發套件）</td><td>不受影響</td><td>不採用：適合放元件，不適合放內容</td></tr>
-    <tr><td>build 時抓 Vault</td><td>全部（還要重新 build）</td><td>不受影響</td><td>不採用：CI 要持有 Vault 憑證，build 結果無法重現</td></tr>
+    <tr><td>build 時寫進各 zone</td><td>全部（還要重新 build）</td><td>不受影響</td><td>不採用：改選單要全部重新 build</td></tr>
     <tr><td>瀏覽器端向 A 抓</td><td>只有 A</td><td>沒有選單</td><td>不採用：選單不在初始 HTML，會閃動、不利 SEO</td></tr>
     <tr><td><strong>A 擁有，B、C 在 server 端向 A 取得 + 快取 + 備援</strong></td><td><strong>只有 A</strong></td><td>用快取或自己掛載的檔案</td><td><span class="tag ok">採用</span></td></tr>
   </tbody>
@@ -411,13 +411,42 @@ function ZoneLink({ href, children }) {
 </div>
 <p>另外評估過把選單 JSON 放進環境變數，不採用：.env、shell、compose 的跳脫規則各不相同，Next 讀 .env 還會展開 <code>$</code>，也沒辦法做結構化驗證。改成放檔案，環境變數只放檔案路徑。</p>
 
-<h3 id="menu-design">5.3 採用的設計</h3>
+<h3 id="menu-store">5.3 選單檔放在哪裡</h3>
+<p>A 讀的是一個檔案，這個檔案從哪裡來是另一個決定。選單<strong>不是機密</strong>，不該放在 Vault 這類 secret 管理工具（第一版 demo 放在 Vault，已改掉）。</p>
+<div class="table-wrap">
+<table>
+  <caption>表 6　選單檔的存放位置</caption>
+  <thead><tr><th>位置</th><th>改選單的流程</th><th>適合</th><th>結論</th></tr></thead>
+  <tbody>
+    <tr><td><strong>K8s ConfigMap，以檔案掛載</strong></td><td>改 deploy repo 的 <code>menu.json</code> → PR review → apply → A 重新部署</td><td>工程團隊維護、不常改、需要 review 與版本紀錄</td><td><span class="tag ok">採用</span></td></tr>
+    <tr><td>Vault／K8s Secret</td><td>改 Vault → 同步 → A 重新部署</td><td>機密資料</td><td>不採用：選單不是機密，改選單還要有 Vault 權限</td></tr>
+    <tr><td>放進 A 的程式碼</td><td>改程式碼 → 重新 build A → 部署</td><td>幾乎不會變的內容</td><td>不採用：違反「改設定只重新部署、不重新 build」</td></tr>
+    <tr><td>後端 API 或 CMS</td><td>在後台改，A 定期取得</td><td>營運、PM 要自己改，而且不想走部署</td><td>目前不需要；需求出現時，只要換掉「A 取得選單」這一段，B、C 不受影響</td></tr>
+  </tbody>
+</table>
+</div>
+<p>用 Kustomize 時，可以讓 ConfigMap 內容一改就自動觸發 A 重新部署：</p>
+<pre class="code"><code># kustomization.yaml（A 的 deploy repo）
+configMapGenerator:
+  - name: site-menu
+    files:
+      - menu.json        # 內容改變 → ConfigMap 名稱帶的 hash 改變 → A 自動 rollout
+
+# deployment.yaml（A；B、C 也掛同一份，當備援）
+volumes:
+  - name: menu
+    configMap: { name: site-menu }
+containers:
+  - env: [{ name: MENU_FILE, value: /etc/config/menu.json }]
+    volumeMounts: [{ name: menu, mountPath: /etc/config, readOnly: true }]   # 不要用 subPath</code></pre>
+<p>ConfigMap 更新後，已掛載的檔案大約一分鐘內會自動換成新內容（用 <code>subPath</code> 掛載的除外）。A 只在啟動時讀一次，所以 A 仍然要重新部署才會生效；B、C 的備援檔則會自動變新。</p>
+
+<h3 id="menu-design">5.4 採用的設計</h3>
 <div class="figure">
 <pre class="mermaid">
 flowchart TB
-  V[(Vault)] -->|同步| S[K8s Secret]
-  S -->|secret volume| FA["A 的選單檔"]
-  S -->|secret volume| FB["B、C 的選單檔<br/>（只在備援時讀）"]
+  S[(ConfigMap<br/>site-menu)] -->|configMap volume| FA["A 的選單檔"]
+  S -->|configMap volume| FB["B、C 的選單檔<br/>（只在備援時讀）"]
   FA -->|啟動時讀一次並驗證，<br/>格式錯就啟動失敗| MA[A 記憶體]
   MA --> NA[A 的導覽列]
   MA --> API["A：GET /api/menu"]
@@ -428,29 +457,29 @@ flowchart TB
 <p class="figcap">圖 2　選單資料流</p>
 <div class="table-wrap">
 <table>
-  <caption>表 6　B、C 取得選單的規則</caption>
+  <caption>表 7　B、C 取得選單的規則</caption>
   <thead><tr><th>狀況</th><th>行為</th></tr></thead>
   <tbody>
     <tr><td>快取未滿 60 秒</td><td>直接用快取，不呼叫 A</td></tr>
     <tr><td>快取過期</td><td>先回傳舊值，背景向 A 更新；更新失敗就繼續用舊值（<strong>備援 ①</strong>）</td></tr>
-    <tr><td>剛啟動且 A 不通</td><td>等 1 秒後改讀自己掛載的同一份 Vault 檔案（<strong>備援 ②</strong>），之後 10 秒內不再嘗試 A，避免每個請求都多等 1 秒</td></tr>
+    <tr><td>剛啟動且 A 不通</td><td>等 1 秒後改讀自己掛載的同一份 ConfigMap 檔案（<strong>備援 ②</strong>），之後 10 秒內不再嘗試 A，避免每個請求都多等 1 秒</td></tr>
     <tr><td>檔案也不能用</td><td>空選單並記錄 error log</td></tr>
   </tbody>
 </table>
 </div>
-<p>兩層備援都不需要人工維護：備援 ① 是 A 最近一次提供的內容；備援 ② 也是 Vault 的資料，只是更新時間點晚一些（B、C 下次部署時）。</p>
+<p>兩層備援都不需要人工維護：備援 ① 是 A 最近一次提供的內容；備援 ② 和 A 讀的是同一份 ConfigMap。</p>
 
-<h3 id="menu-flow">5.4 更新流程</h3>
+<h3 id="menu-flow">5.5 更新流程</h3>
 <div class="figure">
 <pre class="mermaid">
 sequenceDiagram
-  participant Ops as 維運
-  participant V as Vault
+  participant Dev as 工程師
+  participant CM as ConfigMap
   participant A as A
   participant B as B / C
-  Ops->>V: 修改選單
-  V-->>A: 同步到 Secret（還不會生效）
-  Ops->>A: 重新部署 A
+  Dev->>CM: PR 修改 menu.json，合併後 apply
+  CM-->>A: 掛載的檔案更新（A 還沒重讀）
+  CM->>A: 重新部署 A（configMapGenerator 會自動觸發）
   Note over A: A 的頁面立即顯示新選單
   B->>A: 快取過期後背景呼叫 /api/menu
   A-->>B: 新選單
@@ -459,7 +488,7 @@ sequenceDiagram
 </div>
 <p class="figcap">圖 3　選單更新流程</p>
 
-<h3 id="menu-cost">5.5 代價</h3>
+<h3 id="menu-cost">5.6 代價</h3>
 <ul>
   <li>build 時沒有選單，所以用到選單的頁面全部改成每次請求在 server render，失去整頁 CDN 快取。</li>
   <li>每個 Pod 各有一份快取。A 更新後最多 60 秒內，同一位使用者可能在不同 Pod 看到新舊不同的選單。</li>
@@ -526,7 +555,7 @@ sequenceDiagram
 <h2 id="decisions">7. 決策總表</h2>
 <div class="table-wrap">
 <table>
-  <caption>表 7　決策紀錄</caption>
+  <caption>表 8　決策紀錄</caption>
   <thead><tr><th>#</th><th>決策</th><th>考慮過的選項</th><th>採用</th><th>理由</th><th>代價</th></tr></thead>
   <tbody>
     <tr><td class="num">D1</td><td>前端拆分方式</td><td>單一 app／Multi-Zones／Module Federation／iframe</td><td>Multi-Zones</td><td>可以獨立部署、各自選版本，官方支援</td><td>跨 zone 整頁載入；§6 的各項規則</td></tr>
@@ -536,6 +565,7 @@ sequenceDiagram
     <tr><td class="num">D5</td><td>連結用 Link 還是 a</td><td>人工判斷／共用元件依前綴判斷</td><td>共用元件判斷</td><td>人工判斷一定會漏，而且出錯時畫面看不出來</td><td>內文連結仍要靠 review</td></tr>
     <tr><td class="num">D6</td><td>共用導覽列</td><td>各寫一份／相同檔案加比對／共用套件</td><td>demo：相同檔案；正式：共用套件</td><td>demo 不需要 registry；正式需要版本管理</td><td>部署期間各 zone 版本不同</td></tr>
     <tr><td class="num">D7</td><td>選單來源</td><td>見表 5</td><td>A 擁有，B、C 在執行期取得</td><td>改選單只部署 A</td><td>B、C 依賴 A 的 API</td></tr>
+    <tr><td class="num">D7b</td><td>選單檔存放位置</td><td>見表 6</td><td>ConfigMap 掛成檔案</td><td>不是機密；走 PR、可 revert；程式只換讀取路徑</td><td>改選單仍要重新部署 A（可用 configMapGenerator 自動化）</td></tr>
     <tr><td class="num">D8</td><td>選單備援</td><td>只有首頁／build 時快照／快取 + 自己掛載的檔案</td><td>快取 + 自己掛載的檔案</td><td>A 不通時仍顯示真的選單，而且不需要人工維護</td><td>B、C 要掛同一份 secret</td></tr>
     <tr><td class="num">D9</td><td>有選單的頁面怎麼 render</td><td>靜態 + ISR／每次請求 render</td><td>每次請求 render</td><td>build 時拿不到選單；用 ISR 的話，部署後第一批使用者會看到舊選單</td><td>失去整頁 CDN 快取</td></tr>
   </tbody>
@@ -575,11 +605,11 @@ sequenceDiagram
     <tr><td>zone 內切頁／跨 zone 切頁</td><td>zone 內是 soft nav（document 沒有重新載入），跨 zone 是整頁載入，三個 zone 都相同</td></tr>
     <tr><td>靜態資源、<code>_next/data</code>、<code>_next/image</code></td><td>都由正確的 zone 回應</td></tr>
     <tr><td>執行期改 zone 位址</td><td>沒有效果，證明位址在 build 時寫死</td></tr>
-    <tr><td>Vault 改了但還沒重新部署</td><td>三個 zone 仍是舊選單（符合現行規則）</td></tr>
-    <tr><td>只重新部署 A</td><td>A 立即更新；B、C 在 <strong>57 秒</strong>時更新，容器沒有重啟</td></tr>
+    <tr><td>選單檔改了但還沒重新部署</td><td>三個 zone 仍是舊選單（符合現行規則）</td></tr>
+    <tr><td>只重新部署 A</td><td>A 立即更新；B、C 在 <strong>56～57 秒</strong>時更新，容器沒有重啟（Vault 版與 ConfigMap 版各測一次）</td></tr>
     <tr><td>A 停止 → B、C 重啟</td><td>B、C 先用快取（備援 ①）；重啟後改用自己掛載的檔案（備援 ②）</td></tr>
     <tr><td>A 沒有回應（容器暫停）</td><td>第一個請求 1.07 秒後改用備援，之後每個請求 0.011 秒</td></tr>
-    <tr><td>A、Vault 都停止時 build B、C</td><td>成功</td></tr>
+    <tr><td>A 停止時 build B、C</td><td>成功</td></tr>
     <tr><td>缺少選單檔</td><td>該 zone 啟動失敗（exit 1），不會帶著錯誤的設定上線</td></tr>
   </tbody>
 </table>

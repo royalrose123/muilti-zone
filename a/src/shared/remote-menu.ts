@@ -36,7 +36,7 @@ function refreshInBackground(): void {
 }
 
 async function readFallbackFile(): Promise<MenuItem[]> {
-  const file = process.env.MENU_FALLBACK_FILE ?? './config/menu.json';
+  const file = process.env.MENU_FALLBACK_FILE ?? '../deploy/menu.json';
   // 路徑只在執行期決定；告訴 bundler 不要追蹤，避免把整個專案納入 file tracing
   return parseMenu(JSON.parse(await readFile(/* turbopackIgnore: true */ /* webpackIgnore: true */ file, 'utf8')));
 }
