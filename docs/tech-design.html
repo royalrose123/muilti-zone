@@ -604,10 +604,97 @@ flowchart LR
   <li><strong>溝通</strong>：A 用 HTML 屬性傳參數（<code>order-id</code>），C 用事件通知 A（<code>order-select</code>），A 決定要導去哪一頁。兩邊沒有互相 import 程式碼。</li>
   <li><strong>樣式</strong>：C 的 CSS 放在 Shadow DOM 裡，A 的樣式進不來，C 的樣式也出不去。</li>
 </ul>
-<pre class="code"><code>&lt;!-- A 的頁面只需要這樣用 --&gt;
-&lt;script type="module" src="/blog-static/widget/member-widgets.js" crossorigin="anonymous"&gt;&lt;/script&gt;
-&lt;member-orders&gt;&lt;/member-orders&gt;                          &lt;!-- 表格：點一列發出 order-select --&gt;
-&lt;member-order-detail order-id="ORD-20261110-0025"&gt;&lt;/member-order-detail&gt;</code></pre>
+<p><strong>① C：把現有的 React 元件包成 Custom Element</strong>（所有標籤共用這個外殼）</p>
+<pre class="code"><code>// c/widget/define.tsx：把任何 React 元件包成 Custom Element
+import { createRoot, type Root } from 'react-dom/client';
+import type { ReactNode } from 'react';
+import css from './widget.css?inline';           // 整份 CSS 變成字串，放進 Shadow DOM
+
+export function defineWidget(tag: string, render: (el: HTMLElement) =&gt; ReactNode, attrs: string[] = []) {
+  if (customElements.get(tag)) return;             // script 重複載入時不重複定義
+
+  customElements.define(tag, class extends HTMLElement {
+    static observedAttributes = attrs;             // 這些屬性改變時重新 render
+    #root: Root | null = null;
+
+    connectedCallback() {                          // 標籤放進頁面時
+      const shadow = this.attachShadow({ mode: 'open' });
+      const style = document.createElement('style');
+      style.textContent = css;
+      const mount = document.createElement('div');
+      shadow.append(style, mount);
+      this.#root = createRoot(mount);
+      this.#root.render(render(this));
+    }
+    attributeChangedCallback() { this.#root?.render(render(this)); }
+    disconnectedCallback() { this.#root?.unmount(); this.#root = null; }  // 標籤被移除時自動卸載
+  });
+}</code></pre>
+<p><strong>② C：註冊標籤</strong>。用的是 C 頁面上原本的元件；導頁這類行為透過 props 傳入，所以元件不用改。</p>
+<pre class="code"><code>// c/widget/index.tsx：註冊標籤。用的是 C 頁面上原本的元件，沒有改寫
+import { OrdersTable } from '@/member/components/OrdersTable';
+import { OrderDetail } from '@/member/components/OrderDetail';
+import { defineWidget } from './define';
+
+defineWidget('member-orders', (el) =&gt; (
+  &lt;OrdersTable
+    // C 自己的頁面傳入「router.push」；在 widget 裡改成發事件，由 A 決定要做什麼
+    onSelect={(id) =&gt; el.dispatchEvent(
+      new CustomEvent('order-select', { detail: { id }, bubbles: true, composed: true }))}
+  /&gt;
+));
+
+defineWidget('member-order-detail',
+  (el) =&gt; &lt;OrderDetail orderId={el.getAttribute('order-id') ?? ''} /&gt;,
+  ['order-id']);</code></pre>
+<p><strong>③ C：樣式</strong>。沿用 C 的 Tailwind 與 token；<code>:host</code> 擋掉 A 頁面繼承進來的字型、顏色。</p>
+<pre class="code"><code>/* c/widget/widget.css：沿用 C 的 Tailwind 與 design token，再擋掉 A 頁面繼承進來的樣式 */
+@import "../src/styles/globals.css";
+@source "../src/member";
+
+:host { all: initial; display: block; font-family: var(--font-sans); color: #0f172a; }</code></pre>
+<p><strong>④ C：打包設定</strong>。輸出一支 JS，C 的 build 先跑這一步，Docker 照原本的流程 build C 就會帶到。</p>
+<pre class="code"><code>// c/widget/vite.config.ts：打包成一支 JS，放在 C 的 assetPrefix 底下（A 現有的轉發規則已涵蓋）
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } },
+  define: { 'process.env.NODE_ENV': '"production"' },
+  build: {
+    lib: { entry: 'widget/index.tsx', formats: ['es'], fileName: () =&gt; 'member-widgets.js' },
+    outDir: 'public/blog-static/widget',          // 網址：/blog-static/widget/member-widgets.js
+    rolldownOptions: { output: { minify: true } }, // Vite 8 的 lib 模式要這樣才會壓縮空白
+  },
+});
+// package.json："build": "vite build -c widget/vite.config.ts &amp;&amp; next build"</code></pre>
+<p><strong>⑤ A：使用</strong>。不 import C 的任何程式碼，只透過「標籤名稱、屬性、事件」溝通。</p>
+<pre class="code"><code>'use client';
+// a/src/member-widgets/MemberOrders.tsx：A 只載入 script、放標籤、聽事件
+import Script from 'next/script';
+import { useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+
+export function MemberOrders() {
+  const ref = useRef&lt;HTMLElement&gt;(null);
+  const router = useRouter();
+
+  useEffect(() =&gt; {
+    const el = ref.current;
+    const onSelect = (e: Event) =&gt;
+      router.push(`/account/orders/${(e as CustomEvent&lt;{ id: string }&gt;).detail.id}`);
+    el?.addEventListener('order-select', onSelect);
+    return () =&gt; el?.removeEventListener('order-select', onSelect);
+  }, [router]);
+
+  return (
+    &lt;div className="min-h-[520px]"&gt;                {/* 先預留高度，JS 載入後版面才不會跳動 */}
+      &lt;Script src="/blog-static/widget/member-widgets.js" type="module" crossOrigin="anonymous" /&gt;
+      &lt;member-orders ref={ref} /&gt;
+    &lt;/div&gt;
+  );
+}
+
+// 詳細頁：&lt;member-order-detail order-id={id} /&gt;（TypeScript 要另外宣告這幾個標籤的 JSX 型別）</code></pre>
+<p>上面是精簡版。demo 的實作另外處理了：三個標籤共用一個資料快取（TanStack Query 的 QueryClient）、把 Tailwind 的 <code>@property</code> 規則注入頁面（§7.4）、元件只是被搬動位置時不重新掛載、每次打包產生版本號以便確認 A 拿到新版。</p>
 
 <h3 id="embed-pitfalls">7.4 實作時要注意的事</h3>
 <dl class="issue">
